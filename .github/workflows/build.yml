@@ -5,8 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+# contents: write is needed to publish the release; the rest stays read-only.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   apk:
@@ -23,7 +24,7 @@ jobs:
 
       # NOTE: android-actions/setup-android@v3 is deliberately NOT used - it fails on current
       # runner images ("Failed to find package 'tools'"). ubuntu-latest already ships a full
-      # Android SDK, so we just use it and top up any missing components.
+      # Android SDK, so we just use it and top up what is missing.
       - name: Android SDK components
         run: |
           set -x
@@ -46,13 +47,39 @@ jobs:
       - name: Build debug APKs
         run: gradle --no-daemon --stacktrace assembleDebug
 
-      - name: List outputs
-        if: always()
-        run: find . -path '*/build/outputs/apk/*' -name '*.apk' -exec ls -la {} \;
+      - name: Prepare release assets
+        run: |
+          mkdir -p dist
+          cp remap/build/outputs/apk/debug/remap-debug.apk dist/Erhai-X11-Keyboard-Remap.apk
+          cp app/build/outputs/apk/debug/app-debug.apk       dist/Erhai-X11-KeyLog.apk
+          ls -la dist
 
-      - name: Upload APKs
+      - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pad3-apks
-          path: '**/build/outputs/apk/debug/*.apk'
+          name: erhai-x11-apks
+          path: dist/*.apk
           if-no-files-found: error
+
+      # A rolling "latest" release, refreshed on every push to main, so there is always a direct
+      # download link for the newest build without having to dig through workflow artifacts.
+      - name: Publish latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: dist/*.apk
+          body: |
+            Automatic build of the newest `main`.
+
+            **Erhai-X11-Keyboard-Remap.apk** — the app *and* the LSPosed module, plus the
+            KernelSU keymap module bundled inside it (installed on first launch once root is
+            granted).
+
+            **Erhai-X11-KeyLog.apk** — optional diagnostic tool: shows exactly what the
+            application layer receives for each key press.
+
+            See the README for install steps, limitations and credits.
