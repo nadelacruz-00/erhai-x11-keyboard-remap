@@ -31,6 +31,14 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
  * Because the switch is defined as "applied by a reboot" there is nothing to re-read at runtime,
  * which is what lets OFF be a true no-op rather than an un-doing.
  *
+ * WHICH HOOK DOES THE WORK
+ * ------------------------
+ * interceptKeyBeforeQueueing frees the key from the ROM's queueing-time policy, but on this build
+ * that is NOT enough: the Oplus KeyGestureController (KeyGestureControllerExtlmpl, shipped in
+ * oplus-services.jar) still runs at DISPATCH time and turns a Meta long-press into the AI gesture.
+ * So interceptKeyBeforeDispatching is hooked as well - returning 0 from it delivers the event
+ * without ever running the ROM's own body, which is what the gesture lives in.
+ *
  * WHAT A HOOK CAN AND CANNOT DO
  * -----------------------------
  * A Java hook cannot change a key code - the native InputDispatcher dispatches its own copy of the
@@ -47,6 +55,14 @@ public class MainHook implements IXposedHookLoadPackage {
     /** WindowManagerPolicy.ACTION_PASS_TO_USER */
     private static final int ACTION_PASS_TO_USER = 1;
     private static final int POLICY_FLAG_INTERACTIVE = 0x20000000;
+
+    /** interceptKeyBeforeDispatching: dispatch the event now / do not dispatch it. */
+    private static final long DELIVER_NOW = 0L;
+    private static final long CONSUME = -1L;
+
+    /** The ROM class that owns the Meta long-press gesture on this build. */
+    private static final String CLS_OPLUS_GESTURE =
+            "com.android.server.input.KeyGestureControllerExtlmpl";
 
     // ------------------------------------------------------------------ entry point
 
@@ -70,6 +86,8 @@ public class MainHook implements IXposedHookLoadPackage {
         log("=== KbRemap loaded - master switch resolved on first key event ===");
 
         hookQueueing(lp);
+        hookDispatching(lp);
+        hookOplusBlock(lp);
         hookFallback(lp);
     }
 
@@ -199,6 +217,107 @@ public class MainHook implements IXposedHookLoadPackage {
             log("hooked IMS.dispatchUnhandledKey OK");
         } catch (Throwable t) {
             log("!! IMS.dispatchUnhandledKey FAILED: " + t);
+        }
+    }
+
+    /**
+     * The hook that actually frees the key.
+     *
+     * interceptKeyBeforeDispatching is where the ROM decides what a Meta press MEANS, and on this
+     * build the Oplus KeyGestureController turns a long press into the AI gesture. Returning
+     * 0 = "deliver it now" hands the event to the focused window and SKIPS the ROM's own body, so
+     * that gesture never gets a chance to run. Meta is delivered in both directions on purpose:
+     * consuming the UP after the DOWN was delivered would leave the app holding a stuck modifier.
+     */
+    private void hookDispatching(XC_LoadPackage.LoadPackageParam lp) {
+        try {
+            XposedHelpers.findAndHookMethod(CLS_IMS, lp.classLoader,
+                    "interceptKeyBeforeDispatching",
+                    android.os.IBinder.class, KeyEvent.class, int.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam p) {
+                            if (!enabled()) {
+                                return; // switch off: intercept nothing at all
+                            }
+                            KeyEvent e = (KeyEvent) p.args[1];
+                            if (e == null) {
+                                return;
+                            }
+                            if (isMetaRelated(e)) {
+                                log("DISPATCH meta a=" + e.getAction() + " code=" + e.getKeyCode()
+                                        + " scan=" + e.getScanCode() + " -> deliver");
+                                p.setResult(DELIVER_NOW);
+                                return;
+                            }
+                            if (isSearch(e)) {
+                                p.setResult(CONSUME); // the Fn modifier is never delivered
+                            }
+                        }
+                    });
+            log("hooked IMS.interceptKeyBeforeDispatching OK");
+        } catch (Throwable t) {
+            log("!! IMS.interceptKeyBeforeDispatching FAILED: " + t);
+        }
+    }
+
+    /**
+     * Opt-in second line of defence, default OFF (settings put global kbremap_oplus 1).
+     *
+     * Skips the ROM's own body for every {@code intercept*Shortcuts} method on the Oplus gesture
+     * controller - that is where a Meta long press becomes the AI gesture. The methods are found
+     * reflectively and the RETURN TYPE decides how the body is skipped, so an unexpected signature
+     * on another firmware degrades to "nothing hooked" instead of a crash.
+     */
+    private void hookOplusBlock(XC_LoadPackage.LoadPackageParam lp) {
+        try {
+            Class<?> kgc = XposedHelpers.findClassIfExists(CLS_OPLUS_GESTURE, lp.classLoader);
+            if (kgc == null) {
+                log("oplus block: " + CLS_OPLUS_GESTURE + " not present on this build");
+                return;
+            }
+            int n = 0;
+            for (final Method m : kgc.getDeclaredMethods()) {
+                String name = m.getName();
+                if (!name.startsWith("intercept") || !name.endsWith("Shortcuts")) {
+                    continue;
+                }
+                XposedBridge.hookMethod(m, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam p) {
+                        if (!enabled() || !oplusBlock()) {
+                            return;
+                        }
+                        Class<?> rt = m.getReturnType();
+                        if (rt == boolean.class) {
+                            p.setResult(Boolean.FALSE);
+                        } else if (rt == int.class) {
+                            p.setResult(0);
+                        } else {
+                            p.setResult(null); // void: null means "do not run the body"
+                        }
+                        log("OPLUS-BLOCK " + m.getName() + " skipped");
+                    }
+                });
+                n++;
+            }
+            log("oplus block: " + n + " intercept*Shortcuts method(s) armed");
+        } catch (Throwable t) {
+            log("!! oplus block FAILED: " + t);
+        }
+    }
+
+    /** Live opt-in read; absent means OFF, because this one is a fallback, not the main switch. */
+    private static boolean oplusBlock() {
+        try {
+            Context ctx = AndroidAppHelper.currentApplication();
+            if (ctx == null) {
+                return false;
+            }
+            return "1".equals(android.provider.Settings.Global.getString(
+                    ctx.getContentResolver(), Config.KEY_OPLUS_BLOCK));
+        } catch (Throwable t) {
+            return false;
         }
     }
 

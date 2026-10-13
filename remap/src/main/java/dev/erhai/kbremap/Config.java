@@ -38,6 +38,14 @@ public final class Config {
      */
     public static final String KEY_HOOK_ACTIVE = "kbremap_hook_active";
 
+    /**
+     * Opt-in second line of defence, default OFF: skip the ROM's own body for the Oplus
+     * KeyGestureController's intercept*Shortcuts methods. Only needed if the dispatching hook
+     * alone does not stop a Meta long-press from being turned into the AI gesture.
+     * Live, no reboot:  settings put global kbremap_oplus 1
+     */
+    public static final String KEY_OPLUS_BLOCK = "kbremap_oplus";
+
     /** The KernelSU module that carries the keylayout. */
     public static final String KSU_MODULE_ID = "pad3_keymap";
 
