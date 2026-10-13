@@ -46,6 +46,12 @@ public class MainHook implements IXposedHookLoadPackage {
     private static final String CLS_OPLUS_MOD = "com.android.server.policy.OplusModifierShortcutManager";
     private static final String CLS_KGESTURE = "com.android.server.input.KeyGestureController";
 
+    // Found in /system/framework/oplus-services.jar. NOTE: "Extlmpl" really is spelled with a
+    // lowercase L - that is Oplus's own typo, and it is part of the real class name.
+    private static final String CLS_KG_EXT = "com.android.server.input.KeyGestureControllerExtlmpl";
+    private static final String CLS_KG_EXT_META = CLS_KG_EXT + "$MetaKeyHandler";
+    private static final String CLS_KG_MGR = "com.android.server.input.OplusKeyGestureManager";
+
     private static final int F_META = 1;
     private static final int F_OPLUS_MOD = 2;
     private static final int F_KGESTURE = 4;
