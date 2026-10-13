@@ -57,6 +57,12 @@ public class SettingsActivity extends Activity {
 
     private final List<AppEntry> mAll = new ArrayList<>();
     private final List<AppEntry> mShown = new ArrayList<>();
+    /**
+     * Allow-listed packages that are not currently visible (uninstalled, or hidden by package
+     * visibility rules). They are not shown, but they ARE preserved when saving - "hide if not
+     * installed", not "forget if not installed".
+     */
+    private final Set<String> mHidden = new HashSet<>();
 
     private AppAdapter mAdapter;
     private EditText mSearch;
@@ -171,8 +177,16 @@ public class SettingsActivity extends Activity {
                 allowed.add(p);
             }
         }
+        mHidden.clear();
+        Set<String> visible = new HashSet<>();
         for (AppEntry e : mAll) {
+            visible.add(e.pkg);
             e.checked = allowed.contains(e.pkg);
+        }
+        for (String p : allowed) {
+            if (!visible.contains(p)) {
+                mHidden.add(p);
+            }
         }
 
         mBinding = true;
@@ -205,10 +219,7 @@ public class SettingsActivity extends Activity {
         Config.writeFlags(getContentResolver(), mFlags);
     }
 
-    /**
-     * Writes the ticked packages. Because the list is built from INSTALLED launcher apps, this
-     * also drops stale entries for apps that have since been uninstalled.
-     */
+    /** Writes the ticked packages, plus any allow-listed package we cannot see. */
     private void saveApps() {
         if (!mCanWrite) {
             return;
@@ -221,6 +232,15 @@ public class SettingsActivity extends Activity {
                 }
                 sb.append(e.pkg);
             }
+        }
+        // Preserve entries we cannot see. Without this, incomplete package visibility could
+        // silently delete a working entry such as com.termux.x11 the first time anything is
+        // toggled.
+        for (String p : mHidden) {
+            if (sb.length() > 0) {
+                sb.append(',');
+            }
+            sb.append(p);
         }
         Config.writeAppsRaw(getContentResolver(), sb.toString());
     }
