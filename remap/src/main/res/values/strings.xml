@@ -1,51 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Pad3 Kb Remap</string>
-    <string name="xposed_desc">Per-app keyboard remapper for the OnePlus Pad 3 official keyboard. Frees the Meta/Super key from Oplus\'s draw-mode gesture, turns Esc into a real Escape, and maps the top row to F1-F12 behind an Fn key (the Search key).</string>
+    <string name="xposed_desc">Remaps the OnePlus Pad 3 keyboard: the bot key becomes a real Super, Esc becomes a real Escape, the top row becomes F1-F12, and holding Search (Fn) restores each top-row key\'s original action. One master switch, applied at boot.</string>
 
-    <!-- settings screen -->
-    <string name="title">Pad3 Kb Remap</string>
-    <string name="state_loading">……</string>
-    <string name="section_behaviour">Behaviour</string>
-    <string name="section_apps">Apps that get Super</string>
+    <!-- status -->
+    <string name="state_on">Keyboard remap is on</string>
+    <string name="state_off">Keyboard is stock</string>
+    <string name="detail_on">Esc sends a real Escape · the top row sends F1–F12 · the bot key sends a real Super · holding Search (Fn) restores brightness, media and volume</string>
+    <string name="detail_off">Every key behaves as it did before this module existed, including the bot key\'s OnePlus gesture and the top row\'s brightness and media keys.</string>
 
-    <string name="switch_meta">Super key routing</string>
-    <string name="switch_meta_sub">Deliver the bot/AI key as a real Meta/Super to the ticked apps</string>
-    <string name="switch_search">Block the Search key</string>
-    <string name="switch_search_sub">The Search key is the Fn modifier; it stays blocked everywhere</string>
-    <string name="switch_fn">Fn restores the top row</string>
-    <string name="switch_fn_sub">Hold Search + a top-row key to get its original action (brightness, media, volume)</string>
-    <string name="switch_normal">Normal mode for other apps</string>
-    <string name="switch_normal_sub">Apps that are not ticked get the keyboard\'s original behaviour back — Esc = Back, top row = brightness / media / volume</string>
-    <string name="switch_log">Log every key</string>
-    <string name="switch_log_sub">Diagnostic only; leave off for normal use</string>
+    <!-- switch -->
+    <string name="switch_title">Keyboard remap</string>
+    <string name="switch_sub">Applied at the next boot</string>
 
-    <string name="search_hint">Search apps…</string>
-    <string name="restore_defaults">Restore defaults</string>
+    <!-- reboot -->
+    <string name="pending">Reboot to apply this change</string>
+    <string name="reboot_now">Reboot now</string>
+    <string name="rebooting">Rebooting…</string>
 
-    <!--
-      Named for its consequence rather than "kill switch": the UX review flagged a vague
-      destructive button sitting next to ordinary controls as a hazard. It also now asks for
-      confirmation, and the safe choice is the default.
-    -->
-    <string name="kill_switch_short">Disable everything</string>
-    <string name="kill_switch_title">Disable all remapping?</string>
-    <string name="kill_switch_body">Turns off Super-key routing, Search blocking, Fn restore and normal mode. The keyboard goes back to its stock behaviour until you switch something on again. Your app list is kept.</string>
-    <string name="kill_switch_confirm">Disable</string>
-    <string name="cancel">Cancel</string>
-    <string name="kill_switch_done">All remapping is off</string>
-    <string name="defaults_done">Defaults restored</string>
-
-    <string name="no_apps_match">No apps match “%1$s”</string>
-    <string name="no_apps_installed">No launchable apps found</string>
-    <string name="clear_search">Clear search</string>
-    <string name="perm_warning">Not granted WRITE_SECURE_SETTINGS — changes cannot be saved.\nRun once:  pm grant com.minis.kbremap android.permission.WRITE_SECURE_SETTINGS</string>
-    <string name="no_apps">No apps match</string>
-    <string name="apps_checked">%1$d of %2$d apps selected</string>
-    <string name="saved">Saved</string>
-
-    <string name="summary_on">on</string>
-    <string name="summary_off">off</string>
-    <string name="summary_blocked">blocked</string>
-    <string name="read_only">read-only: permission missing</string>
+    <!-- problems -->
+    <string name="permission_missing">Not granted WRITE_SECURE_SETTINGS, so changes cannot be saved.\nRun once:  pm grant com.minis.kbremap android.permission.WRITE_SECURE_SETTINGS</string>
+    <string name="root_missing">KernelSU could not be reached, so the keymap half was not changed. Enable or disable “Pad3 Keymap” in the KernelSU manager yourself, then reboot.</string>
 </resources>
