@@ -14,7 +14,13 @@
     <style name="Theme.KbRemap"
         parent="Theme.Material3Expressive.DynamicColors.DayNight.NoActionBar" />
 
-    <!-- Modal confirmation used before the destructive kill switch. -->
-    <style name="Theme.KbRemap.Dialog"
-        parent="Theme.Material3Expressive.DynamicColors.DayNight.Dialog.Alert" />
+    <!--
+      No custom dialog style on purpose. MaterialAlertDialogBuilder picks up this theme's
+      materialAlertDialogTheme attribute, which the Expressive theme already styles - so the
+      confirmation dialog is Expressive for free.
+
+      NOTE for future edits: the DynamicColors variants have NO _Dialog children (only
+      DayNight/Light/Dark do). Deriving a style name by analogy from a sibling will fail the
+      build - read the exact name out of the library's R.txt first.
+    -->
 </resources>
