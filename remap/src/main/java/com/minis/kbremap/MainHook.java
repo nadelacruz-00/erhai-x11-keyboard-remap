@@ -87,7 +87,10 @@ public class MainHook implements IXposedHookLoadPackage {
     private static final int F_LEGACY_PWM = 4;
     private static final int F_OPLUS_BLOCK = 8;
     private static final int F_LOG_ALL = 16;
-    private static final int DEFAULT_FLAGS = F_META | F_SEARCH;
+    /** flag 256: Fn (Search) re-injects the top row's original key code. */
+    private static final int F_FN_RESTORE = 256;
+
+    private static final int DEFAULT_FLAGS = F_META | F_SEARCH | F_FN_RESTORE;
 
     private static final String CFG_FILE = "/data/system/minis_kbremap/apps.conf";
     private static final String[] DEFAULT_APPS = {"com.termux.x11"};
@@ -631,9 +634,6 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     // ------------------------------------------------------------- Fn restore (Layer A2)
-
-    /** flag 256: Fn (Search) re-injects the top row's original key code. Default ON. */
-    private static final int F_FN_RESTORE = 256;
 
     /** Top row left-to-right is F1..F12 in the keylayout; these are its ORIGINAL key codes. */
     private static final int[] TOP_ROW_SCANS = {
