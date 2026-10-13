@@ -187,10 +187,32 @@ public class MainHook implements IXposedHookLoadPackage {
         return ((long) e.getDeviceId() << 32) | (e.getKeyCode() & 0xffffffffL);
     }
 
+    /** KEYCODE_F23 is @hide in the SDK but exists at runtime; resolve it reflectively once. */
+    private static volatile int sF23 = Integer.MIN_VALUE;
+
+    private static int f23() {
+        if (sF23 == Integer.MIN_VALUE) {
+            int v = -1;
+            try {
+                v = XposedHelpers.getStaticIntField(KeyEvent.class, "KEYCODE_F23");
+            } catch (Throwable ignored) {
+                // leave -1: fall back to matching on the scan code
+            }
+            sF23 = v;
+        }
+        return sF23;
+    }
+
     private static boolean isSearch(KeyEvent e) {
-        // The physical Search key emits KEYCODE_F23 (Linux scan 193) on this keyboard.
-        return e.getKeyCode() == KeyEvent.KEYCODE_SEARCH
-                || (e.getKeyCode() == KeyEvent.KEYCODE_F23 && e.getScanCode() == 193);
+        // The physical Search key emits hidden KEYCODE_F23 at Linux scan code 193 here.
+        if (e.getScanCode() == 193) {
+            return true;
+        }
+        if (e.getKeyCode() == KeyEvent.KEYCODE_SEARCH) {
+            return true;
+        }
+        int f23 = f23();
+        return f23 != -1 && e.getKeyCode() == f23;
     }
 
     private static boolean isMetaRelated(KeyEvent e) {
