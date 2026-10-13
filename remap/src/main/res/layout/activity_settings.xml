@@ -12,6 +12,7 @@
     android:layout_height="match_parent"
     android:background="?android:attr/colorBackground"
     android:fitsSystemWindows="true"
+    android:gravity="center_vertical"
     android:orientation="vertical">
 
     <!--
@@ -25,13 +26,16 @@
     -->
 
     <!--
-      wrap_content + center_vertical: the screen is short, so a top-anchored column left a large
-      empty tail. Centring the block keeps it balanced on the tablet.
+      Centred by the PARENT's gravity="center_vertical" plus wrap_content here. The screen is short,
+      so a top-anchored column left a large empty tail.
+
+      NOTE: layout_gravity here would do nothing. For a vertical LinearLayout, a child's
+      layout_gravity positions it on the CROSS axis (horizontally); position along the MAIN
+      (vertical) axis is the parent's gravity attribute. Getting this wrong fails silently.
     -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_vertical"
         android:orientation="vertical"
         android:paddingStart="@dimen/screen_margin"
         android:paddingTop="@dimen/gap_l"
