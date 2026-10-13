@@ -72,6 +72,7 @@ public class SettingsActivity extends Activity {
     private Switch mSwMeta;
     private Switch mSwSearch;
     private Switch mSwFn;
+    private Switch mSwNormal;
     private Switch mSwLog;
 
     private int mFlags;
@@ -93,6 +94,7 @@ public class SettingsActivity extends Activity {
         mSwMeta = findViewById(R.id.swMeta);
         mSwSearch = findViewById(R.id.swSearch);
         mSwFn = findViewById(R.id.swFn);
+        mSwNormal = findViewById(R.id.swNormal);
         mSwLog = findViewById(R.id.swLog);
 
         View permWarning = findViewById(R.id.permWarning);
@@ -134,6 +136,7 @@ public class SettingsActivity extends Activity {
             int bit = button.getId() == R.id.swMeta ? Config.META
                     : button.getId() == R.id.swSearch ? Config.SEARCH
                     : button.getId() == R.id.swFn ? Config.FN_RESTORE
+                    : button.getId() == R.id.swNormal ? Config.NORMAL_MODE
                     : Config.LOG_ALL;
             if (checked) {
                 mFlags |= bit;
@@ -146,6 +149,7 @@ public class SettingsActivity extends Activity {
         mSwMeta.setOnCheckedChangeListener(flags);
         mSwSearch.setOnCheckedChangeListener(flags);
         mSwFn.setOnCheckedChangeListener(flags);
+        mSwNormal.setOnCheckedChangeListener(flags);
         mSwLog.setOnCheckedChangeListener(flags);
 
         ((Button) findViewById(R.id.btnDefaults)).setOnClickListener(v -> applyDefaults());
@@ -154,6 +158,7 @@ public class SettingsActivity extends Activity {
             mSwMeta.setChecked(false);
             mSwSearch.setChecked(false);
             mSwFn.setChecked(false);
+            mSwNormal.setChecked(false);
             mSwLog.setChecked(false);
             mBinding = false;
             mFlags = 0;
@@ -193,6 +198,7 @@ public class SettingsActivity extends Activity {
         mSwMeta.setChecked((mFlags & Config.META) != 0);
         mSwSearch.setChecked((mFlags & Config.SEARCH) != 0);
         mSwFn.setChecked((mFlags & Config.FN_RESTORE) != 0);
+        mSwNormal.setChecked((mFlags & Config.NORMAL_MODE) != 0);
         mSwLog.setChecked((mFlags & Config.LOG_ALL) != 0);
         mBinding = false;
 
@@ -206,6 +212,7 @@ public class SettingsActivity extends Activity {
         mSwMeta.setChecked((mFlags & Config.META) != 0);
         mSwSearch.setChecked((mFlags & Config.SEARCH) != 0);
         mSwFn.setChecked((mFlags & Config.FN_RESTORE) != 0);
+        mSwNormal.setChecked((mFlags & Config.NORMAL_MODE) != 0);
         mSwLog.setChecked((mFlags & Config.LOG_ALL) != 0);
         mBinding = false;
         saveFlags();

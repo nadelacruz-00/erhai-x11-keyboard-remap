@@ -15,6 +15,8 @@
     <string name="switch_search_sub">The Search key is the Fn modifier; it stays blocked everywhere</string>
     <string name="switch_fn">Fn restores the top row</string>
     <string name="switch_fn_sub">Hold Search + a top-row key to get its original action (brightness, media, volume)</string>
+    <string name="switch_normal">Normal mode for other apps</string>
+    <string name="switch_normal_sub">Apps that are not ticked get the keyboard\'s original behaviour back — Esc = Back, top row = brightness / media / volume</string>
     <string name="switch_log">Log every key</string>
     <string name="switch_log_sub">Diagnostic only; leave off for normal use</string>
 

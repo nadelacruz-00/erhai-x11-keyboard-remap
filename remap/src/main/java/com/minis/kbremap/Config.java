@@ -26,8 +26,14 @@ public final class Config {
     public static final int LOG_ALL = 16;
     /** Fn (the Search key) re-injects the top row's original key code. */
     public static final int FN_RESTORE = 256;
+    /**
+     * Apps NOT in the list get the keyboard's ORIGINAL behaviour back: the remapped keys are
+     * swallowed and their original key codes re-injected (Esc -> BACK, top row -> brightness /
+     * media / volume, trackpad key -> F16 / F17).
+     */
+    public static final int NORMAL_MODE = 512;
 
-    public static final int DEFAULT_FLAGS = META | SEARCH | FN_RESTORE;
+    public static final int DEFAULT_FLAGS = META | SEARCH | FN_RESTORE | NORMAL_MODE;
 
     // ---------------------------------------------------------------- keys
 

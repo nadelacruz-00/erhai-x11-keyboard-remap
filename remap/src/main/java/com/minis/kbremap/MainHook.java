@@ -90,6 +90,8 @@ public class MainHook implements IXposedHookLoadPackage {
     private static final int F_LOG_ALL = Config.LOG_ALL;
     /** flag 256: Fn (Search) re-injects the top row's original key code. */
     private static final int F_FN_RESTORE = Config.FN_RESTORE;
+    /** flag 512: apps NOT in the list get the original keyboard behaviour back. */
+    private static final int F_NORMAL_MODE = Config.NORMAL_MODE;
     /** bit 8 - reserved; not currently wired to anything. */
     private static final int F_OPLUS_BLOCK = 8;
 
@@ -493,9 +495,29 @@ public class MainHook implements IXposedHookLoadPackage {
                             if (e == null) {
                                 return;
                             }
+                            IBinder token = (IBinder) p.args[0];
                             Context ctx = contextOf(p.thisObject);
                             Object wm = windowManagerOf(p.thisObject);
-                            int r = dispatch(ctx, wm, (IBinder) p.args[0], e);
+
+                            // ---- normal mode: the focused app is NOT in the allow-list ----
+                            // Swallow the remapped key and re-inject its ORIGINAL code, so an
+                            // unlisted app sees the keyboard exactly as stock. This lives here
+                            // because dispatch is the only point where the focused window is
+                            // known. Keys dropped by the Fn-restore path never reach here, so the
+                            // two paths cannot double-fire.
+                            if ((flags() & F_NORMAL_MODE) != 0 && isRemapped(e)
+                                    && !allowed(ctx, wm, token)) {
+                                int orig = originalFor(e);
+                                if (orig != -1 && orig != e.getKeyCode()) {
+                                    injectKey(p.thisObject, e, orig);
+                                    log("NORMAL-MODE scan=" + e.getScanCode()
+                                            + " code=" + e.getKeyCode() + " -> " + orig);
+                                }
+                                p.setResult(-1L); // never deliver the remapped key
+                                return;
+                            }
+
+                            int r = dispatch(ctx, wm, token, e);
                             if (r != PASSTHROUGH) {
                                 p.setResult((long) r);
                             }
@@ -647,20 +669,71 @@ public class MainHook implements IXposedHookLoadPackage {
 
     // ------------------------------------------------------------- Fn restore (Layer A2)
 
-    /** Top row left-to-right is F1..F12 in the keylayout; these are its ORIGINAL key codes. */
-    // Scans 183 and 194 (the lock and mic keys, originally F13 and F24) are deliberately NOT
-    // listed here. Their original key codes resolve correctly (326 and 337 on this build) and
-    // the injection is accepted (ok=true), but the platform does not act on them: those two
-    // actions are only honoured from real hardware events. Injecting them achieved nothing, so
-    // they are left out and Fn+F3 / Fn+F6 now simply behave like plain F3 / F6 (chosen trade-off
-    // to keep the full F1..F12 row). Do not re-add them without re-testing.
+    /**
+     * Top row in the order the keylayout maps it to F1..F12, with its ORIGINAL key codes.
+     * Used by the Fn-restore path.
+     *
+     * Scans 183 and 194 (lock and mic, originally F13 and F24) are deliberately NOT listed: their
+     * codes resolve correctly (326 / 337 here) and injection is accepted (ok=true), but the
+     * platform does not act on them - those actions only fire from real hardware events.
+     * Do not re-add them without re-testing.
+     *
+     * Scan 187 IS listed: 186 and 187 are ONE physical key (the trackpad toggle) whose scan code
+     * depends on trackpad state - 186 when off, 187 when on.
+     */
     private static final int[] TOP_ROW_SCANS = {
-            224, 225, 186, 99, 165, 164, 163, 113, 114, 115};
+            224, 225, 186, 187, 99, 165, 164, 163, 113, 114, 115};
     private static final String[] TOP_ROW_ORIGINAL_NAMES = {
-            "BRIGHTNESS_DOWN", "BRIGHTNESS_UP", "F16", "SYSRQ",
+            "BRIGHTNESS_DOWN", "BRIGHTNESS_UP", "F16", "F17", "SYSRQ",
             "MEDIA_PREVIOUS", "MEDIA_PLAY_PAUSE", "MEDIA_NEXT",
             "VOLUME_MUTE", "VOLUME_DOWN", "VOLUME_UP"};
     private static final int[] TOP_ROW_ORIGINAL = new int[TOP_ROW_SCANS.length];
+
+    // ------------------------------------------------------- normal mode (apps not listed)
+
+    /**
+     * EVERY scan the keylayout remaps, with its original key code. When the focused app is NOT in
+     * the allow-list the remapped key is swallowed and this code re-injected, which gives the
+     * keyboard's stock behaviour back.
+     *
+     * 183 and 194 are included even though their system actions do not respond to injection - the
+     * app still receives the original key code, which is the honest meaning of "normal". The lock
+     * and mic actions themselves cannot be recovered in ANY mode (measured).
+     *
+     * 193 (Search) is absent on purpose: it is dropped everywhere and never remapped back.
+     */
+    private static final int[] REMAP_SCANS = {
+            158, 224, 225, 183, 186, 187, 99, 194, 165, 164, 163, 113, 114, 115};
+    private static final String[] REMAP_ORIGINAL_NAMES = {
+            "BACK", "BRIGHTNESS_DOWN", "BRIGHTNESS_UP", "F13", "F16", "F17", "SYSRQ", "F24",
+            "MEDIA_PREVIOUS", "MEDIA_PLAY_PAUSE", "MEDIA_NEXT",
+            "VOLUME_MUTE", "VOLUME_DOWN", "VOLUME_UP"};
+    private static final int[] REMAP_ORIGINAL = new int[REMAP_SCANS.length];
+
+    /** Is this one of the keys the keylayout remapped? */
+    private static boolean isRemapped(KeyEvent e) {
+        int s = e.getScanCode();
+        for (int scan : REMAP_SCANS) {
+            if (scan == s) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The original key code for a remapped scan, or -1. Resolved lazily and cached. */
+    private static int originalFor(KeyEvent e) {
+        int s = e.getScanCode();
+        for (int i = 0; i < REMAP_SCANS.length; i++) {
+            if (REMAP_SCANS[i] == s) {
+                if (REMAP_ORIGINAL[i] == 0) {
+                    REMAP_ORIGINAL[i] = kc(REMAP_ORIGINAL_NAMES[i]);
+                }
+                return REMAP_ORIGINAL[i];
+            }
+        }
+        return -1;
+    }
 
     /** Several KEYCODE_* constants are @hide in the SDK, so resolve them by name. */
     private static int kc(String name) {
