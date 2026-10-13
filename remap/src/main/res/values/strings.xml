@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Pad3 Kb Remap</string>
+    <string name="xposed_desc">Per-app keyboard remapper for the OnePlus Pad 3 official keyboard. Frees the Meta/Super key from Oplus\'s draw-mode gesture, turns Esc into a real Escape, and maps the top row to F1-F12 behind an Fn-lock toggled by the Search key.</string>
+</resources>

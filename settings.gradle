@@ -11,8 +11,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // classic Xposed API (compileOnly) - used by the LSPosed module
+        maven { url 'https://api.xposed.info/' }
     }
 }
 
-rootProject.name = "KeyLog"
+rootProject.name = "Pad3Kb"
 include ':app'
+include ':remap'
