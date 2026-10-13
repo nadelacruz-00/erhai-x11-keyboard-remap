@@ -636,10 +636,16 @@ public class MainHook implements IXposedHookLoadPackage {
     // ------------------------------------------------------------- Fn restore (Layer A2)
 
     /** Top row left-to-right is F1..F12 in the keylayout; these are its ORIGINAL key codes. */
+    // Scans 183 and 194 (the lock and mic keys, originally F13 and F24) are deliberately NOT
+    // listed here. Their original key codes resolve correctly (326 and 337 on this build) and
+    // the injection is accepted (ok=true), but the platform does not act on them: those two
+    // actions are only honoured from real hardware events. Injecting them achieved nothing, so
+    // they are left out and Fn+F3 / Fn+F6 now simply behave like plain F3 / F6 (chosen trade-off
+    // to keep the full F1..F12 row). Do not re-add them without re-testing.
     private static final int[] TOP_ROW_SCANS = {
-            224, 225, 183, 186, 99, 194, 165, 164, 163, 113, 114, 115};
+            224, 225, 186, 99, 165, 164, 163, 113, 114, 115};
     private static final String[] TOP_ROW_ORIGINAL_NAMES = {
-            "BRIGHTNESS_DOWN", "BRIGHTNESS_UP", "F13", "F16", "SYSRQ", "F24",
+            "BRIGHTNESS_DOWN", "BRIGHTNESS_UP", "F16", "SYSRQ",
             "MEDIA_PREVIOUS", "MEDIA_PLAY_PAUSE", "MEDIA_NEXT",
             "VOLUME_MUTE", "VOLUME_DOWN", "VOLUME_UP"};
     private static final int[] TOP_ROW_ORIGINAL = new int[TOP_ROW_SCANS.length];
