@@ -1,7 +1,6 @@
 package com.minis.kbremap;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
@@ -22,6 +21,8 @@ import android.widget.ListView;
 import android.widget.Switch;
 import android.widget.TextView;
 
+import androidx.appcompat.app.AppCompatActivity;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -40,7 +41,7 @@ import java.util.Set;
  *
  *     pm grant com.minis.kbremap android.permission.WRITE_SECURE_SETTINGS
  */
-public class SettingsActivity extends Activity {
+public class SettingsActivity extends AppCompatActivity {
 
     private static final class AppEntry {
         final String label;

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!--
+      Material 3 Expressive, with wallpaper-derived dynamic colour (Material You) on Android 12+
+      and the designed light/dark fallback below that.
+
+      NoActionBar because this screen draws its own header - which also removes the duplicated
+      title the previous build showed (system action bar + our own).
+
+      The parent theme and the Widget.Material3Expressive.* styles were read out of
+      material-1.14.0's own resource table rather than guessed.
+    -->
+    <style name="Theme.KbRemap"
+        parent="Theme.Material3Expressive.DynamicColors.DayNight.NoActionBar" />
+
+    <!-- Modal confirmation used before the destructive kill switch. -->
+    <style name="Theme.KbRemap.Dialog"
+        parent="Theme.Material3Expressive.DynamicColors.DayNight.Dialog.Alert" />
+</resources>

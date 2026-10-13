@@ -34,7 +34,8 @@ jobs:
           echo "sdkmanager=$SDKMANAGER"
           echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
-          "$SDKMANAGER" --install "platforms;android-34" "build-tools;34.0.0" 2>&1 | tail -3 || true
+          # compileSdk 35 is required by androidx.core 1.16.0, which Material 1.14.0 pulls in.
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0" 2>&1 | tail -3 || true
           ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools" || true
 
       - name: Set up Gradle
