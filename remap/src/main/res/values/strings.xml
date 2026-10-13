@@ -1,5 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Pad3 Kb Remap</string>
-    <string name="xposed_desc">Per-app keyboard remapper for the OnePlus Pad 3 official keyboard. Frees the Meta/Super key from Oplus\'s draw-mode gesture, turns Esc into a real Escape, and maps the top row to F1-F12 behind an Fn-lock toggled by the Search key.</string>
+    <string name="xposed_desc">Per-app keyboard remapper for the OnePlus Pad 3 official keyboard. Frees the Meta/Super key from Oplus\'s draw-mode gesture, turns Esc into a real Escape, and maps the top row to F1-F12 behind an Fn key (the Search key).</string>
+
+    <!-- settings screen -->
+    <string name="title">Pad3 Kb Remap</string>
+    <string name="state_loading">……</string>
+    <string name="section_behaviour">Behaviour</string>
+    <string name="section_apps">Apps that get Super</string>
+
+    <string name="switch_meta">Super key routing</string>
+    <string name="switch_meta_sub">Deliver the bot/AI key as a real Meta/Super to the ticked apps</string>
+    <string name="switch_search">Block the Search key</string>
+    <string name="switch_search_sub">The Search key is the Fn modifier; it stays blocked everywhere</string>
+    <string name="switch_fn">Fn restores the top row</string>
+    <string name="switch_fn_sub">Hold Search + a top-row key to get its original action (brightness, media, volume)</string>
+    <string name="switch_log">Log every key</string>
+    <string name="switch_log_sub">Diagnostic only; leave off for normal use</string>
+
+    <string name="search_hint">Search apps…</string>
+    <string name="restore_defaults">Restore defaults</string>
+    <string name="kill_switch">Kill switch (all off)</string>
+    <string name="perm_warning">Not granted WRITE_SECURE_SETTINGS — changes cannot be saved.\nRun once:  pm grant com.minis.kbremap android.permission.WRITE_SECURE_SETTINGS</string>
+    <string name="no_apps">No apps match</string>
+    <string name="apps_checked">%1$d of %2$d apps selected</string>
+    <string name="saved">Saved</string>
+
+    <string name="summary_on">on</string>
+    <string name="summary_off">off</string>
+    <string name="summary_blocked">blocked</string>
 </resources>

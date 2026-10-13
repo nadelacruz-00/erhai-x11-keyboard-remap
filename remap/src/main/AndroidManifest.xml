@@ -1,8 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      Needed so the settings screen can write Settings.Global, which the hook reads.
+      This is a privileged permission: declaring it here is harmless, but it must be granted
+      once from a root shell:
+          pm grant com.minis.kbremap android.permission.WRITE_SECURE_SETTINGS
+      Without it the screen still displays everything, just read-only.
+    -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+
     <application
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material">
@@ -19,5 +29,16 @@
         <meta-data
             android:name="xposedscope"
             android:resource="@array/xposedscope" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:configChanges="orientation|screenSize|screenLayout|density|uiMode|keyboard|keyboardHidden|navigation"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

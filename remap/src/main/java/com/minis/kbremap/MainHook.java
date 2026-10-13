@@ -82,17 +82,20 @@ public class MainHook implements IXposedHookLoadPackage {
     /** "leave stock policy alone" - shorter than an int, so it can never be a real result. */
     private static final int PASSTHROUGH = -2;
 
-    private static final int F_META = 1;
-    private static final int F_SEARCH = 2;
-    private static final int F_LEGACY_PWM = 4;
-    private static final int F_OPLUS_BLOCK = 8;
-    private static final int F_LOG_ALL = 16;
+    // Aliases to Config, which the settings screen also uses. One definition of every bit, so the
+    // UI and the hook can never drift apart.
+    private static final int F_META = Config.META;
+    private static final int F_SEARCH = Config.SEARCH;
+    private static final int F_LEGACY_PWM = Config.LEGACY_PWM;
+    private static final int F_LOG_ALL = Config.LOG_ALL;
     /** flag 256: Fn (Search) re-injects the top row's original key code. */
-    private static final int F_FN_RESTORE = 256;
+    private static final int F_FN_RESTORE = Config.FN_RESTORE;
+    /** bit 8 - reserved; not currently wired to anything. */
+    private static final int F_OPLUS_BLOCK = 8;
 
-    private static final int DEFAULT_FLAGS = F_META | F_SEARCH | F_FN_RESTORE;
+    private static final int DEFAULT_FLAGS = Config.DEFAULT_FLAGS;
 
-    private static final String CFG_FILE = "/data/system/minis_kbremap/apps.conf";
+    private static final String CFG_FILE = Config.CONFIG_FILE;
     private static final String[] DEFAULT_APPS = {"com.termux.x11"};
 
     // ---------------------------------------------------------------- state
@@ -154,12 +157,14 @@ public class MainHook implements IXposedHookLoadPackage {
         Set<String> next = new HashSet<>();
         boolean read = false;
         String settingVal = "<not read: ctx was null>";
+        boolean settingPresent = false;
 
         try {
             if (ctx != null) {
-                settingVal = Settings.Global.getString(ctx.getContentResolver(), "kbremap_apps");
+                settingVal = Settings.Global.getString(ctx.getContentResolver(), Config.KEY_APPS);
                 read = true;
-                if (settingVal != null) {
+                settingPresent = settingVal != null;
+                if (settingPresent) {
                     for (String p : settingVal.split(",")) {
                         p = p.trim();
                         if (isPackage(p)) {
@@ -172,17 +177,24 @@ public class MainHook implements IXposedHookLoadPackage {
             settingVal = "<threw: " + t + ">";
         }
 
-        try (BufferedReader r = new BufferedReader(new FileReader(CFG_FILE))) {
-            read = true;
-            String line;
-            while ((line = r.readLine()) != null) {
-                line = line.trim();
-                if (isPackage(line)) {
-                    next.add(line);
+        // Settings.Global is AUTHORITATIVE whenever the key exists - including when it is empty,
+        // because that is how the settings screen clears the list. The config file is only a
+        // fallback for when the key is absent entirely (fresh install configured from a root shell).
+        // This must NOT be a union: a union would let a stale file keep re-adding an app the user
+        // had just unticked.
+        if (!settingPresent) {
+            try (BufferedReader r = new BufferedReader(new FileReader(Config.CONFIG_FILE))) {
+                read = true;
+                String line;
+                while ((line = r.readLine()) != null) {
+                    line = line.trim();
+                    if (isPackage(line)) {
+                        next.add(line);
+                    }
                 }
+            } catch (Throwable ignored) {
+                // no config file - perfectly normal
             }
-        } catch (Throwable ignored) {
-            // no config file - perfectly normal
         }
 
         if (!read) {

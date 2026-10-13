@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Icon: a keyboard with one key picked out in amber.
+  The amber key is the leftmost top key - a nod to the bot/AI key this project reclaimed.
+  Everything sits inside the adaptive-icon safe zone (centre 66x66 of the 108x108 viewport).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- keyboard body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M29,40 L79,40 A6,6 0 0 1 85,46 L85,62 A6,6 0 0 1 79,68 L29,68 A6,6 0 0 1 23,62 L23,46 A6,6 0 0 1 29,40 Z" />
+
+    <!-- top row: leftmost key is the accent (the reclaimed key) -->
+    <path
+        android:fillColor="#FFB300"
+        android:pathData="M30,46 L38,46 L38,53 L30,53 Z" />
+    <path
+        android:fillColor="#1E2A38"
+        android:pathData="M43,46 L51,46 L51,53 L43,53 Z" />
+    <path
+        android:fillColor="#1E2A38"
+        android:pathData="M56,46 L64,46 L64,53 L56,53 Z" />
+    <path
+        android:fillColor="#1E2A38"
+        android:pathData="M69,46 L77,46 L77,53 L69,53 Z" />
+
+    <!-- bottom row -->
+    <path
+        android:fillColor="#1E2A38"
+        android:pathData="M30,57 L38,57 L38,64 L30,64 Z" />
+    <path
+        android:fillColor="#1E2A38"
+        android:pathData="M43,57 L51,57 L51,64 L43,64 Z" />
+    <path
+        android:fillColor="#1E2A38"
+        android:pathData="M56,57 L64,57 L64,64 L56,64 Z" />
+    <path
+        android:fillColor="#1E2A38"
+        android:pathData="M69,57 L77,57 L77,64 L69,64 Z" />
+</vector>

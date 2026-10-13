@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- deep slate background -->
+    <path
+        android:fillColor="#0F1B26"
+        android:pathData="M0,0 h108 v108 h-108 z" />
+
+    <!-- subtle diagonal sheen so it does not read as flat grey -->
+    <path
+        android:fillColor="#16303F"
+        android:pathData="M0,108 L108,0 L108,108 z" />
+</vector>
