@@ -132,20 +132,28 @@ public class MainHook implements IXposedHookLoadPackage {
         return sFlags;
     }
 
-    /** Allowed packages: Settings.Global wins, otherwise the config file. Cached 2 s. */
+    /**
+     * Allowed packages = UNION of the Settings.Global override and the config file, so either
+     * route works on its own. Cached 2 s. If BOTH sources fail to read, the previous list is kept
+     * (never silently becomes empty and locks Meta out everywhere).
+     */
     private static Set<String> apps(Context ctx) {
         long now = SystemClock.uptimeMillis();
         if (now - sAppsAt < 2000L) {
             return sApps;
         }
         sAppsAt = now;
-        Set<String> next = null;
+
+        Set<String> next = new HashSet<>();
+        boolean read = false;
+        String settingVal = "<not read: ctx was null>";
+
         try {
             if (ctx != null) {
-                String v = Settings.Global.getString(ctx.getContentResolver(), "kbremap_apps");
-                if (v != null && !v.trim().isEmpty()) {
-                    next = new HashSet<>();
-                    for (String p : v.split(",")) {
+                settingVal = Settings.Global.getString(ctx.getContentResolver(), "kbremap_apps");
+                read = true;
+                if (settingVal != null) {
+                    for (String p : settingVal.split(",")) {
                         p = p.trim();
                         if (isPackage(p)) {
                             next.add(p);
@@ -153,27 +161,30 @@ public class MainHook implements IXposedHookLoadPackage {
                     }
                 }
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            settingVal = "<threw: " + t + ">";
         }
-        if (next == null) {
-            try (BufferedReader r = new BufferedReader(new FileReader(CFG_FILE))) {
-                Set<String> file = new HashSet<>();
-                String line;
-                while ((line = r.readLine()) != null) {
-                    line = line.trim();
-                    if (isPackage(line)) {
-                        file.add(line);
-                    }
+
+        try (BufferedReader r = new BufferedReader(new FileReader(CFG_FILE))) {
+            read = true;
+            String line;
+            while ((line = r.readLine()) != null) {
+                line = line.trim();
+                if (isPackage(line)) {
+                    next.add(line);
                 }
-                next = file;
-            } catch (Throwable ignored) {
-                // keep the previous list
             }
+        } catch (Throwable ignored) {
+            // no config file - perfectly normal
         }
-        if (next != null) {
-            if (!next.equals(sApps)) {
-                log("allow-list = " + next);
-            }
+
+        if (!read) {
+            log("allow-list read FAILED from both sources; keeping " + sApps);
+            return sApps;
+        }
+        if (!next.equals(sApps)) {
+            log("allow-list changed = " + next + "   (settings.kbremap_apps=" + settingVal
+                    + ", file=" + CFG_FILE + ")");
             sApps = next;
         }
         return sApps;
@@ -310,13 +321,31 @@ public class MainHook implements IXposedHookLoadPackage {
         return permit ? 0 : -1;
     }
 
+    /**
+     * Is the focused window owned by an allowed package?
+     * Every reason for a "no" is logged, because "allow=false" with no explanation was exactly
+     * what stalled the previous round. Add flag 128 to ignore the keyguard for testing.
+     */
     private static boolean allowed(Context ctx, Object wm, IBinder token) {
-        if (ctx == null || wm == null || token == null) {
+        final boolean ignoreKeyguard = (flags() & 128) != 0;
+
+        if (token == null) {
+            log("ALLOW: token=null -> false");
+            return false;
+        }
+        if (ctx == null) {
+            log("ALLOW: ctx=null -> false");
             return false;
         }
         try {
             KeyguardManager km = (KeyguardManager) ctx.getSystemService(Context.KEYGUARD_SERVICE);
-            if (km == null || km.isKeyguardLocked()) {
+            boolean locked = km == null || km.isKeyguardLocked();
+            if (locked && !ignoreKeyguard) {
+                log("ALLOW: keyguard is locked -> false (flag 128 would ignore this)");
+                return false;
+            }
+            if (wm == null) {
+                log("ALLOW: mKeyGestureController.mWindowManagerInternal=null -> false");
                 return false;
             }
             if (sGetInfo == null) {
@@ -327,26 +356,32 @@ public class MainHook implements IXposedHookLoadPackage {
             }
             Object info = sGetInfo.invoke(wm, token);
             if (info == null) {
+                log("ALLOW: getKeyInterceptionInfoFromToken returned null -> false");
                 return false;
             }
             int uid = sOwnerUid.getInt(info);
             PackageManager pm = ctx.getPackageManager();
             String[] packages = pm.getPackagesForUid(uid);
             Set<String> allow = apps(ctx);
+            boolean ok = false;
             if (packages != null) {
                 for (String p : packages) {
                     if (allow.contains(p)) {
-                        return true;
+                        ok = true;
+                        break;
                     }
                 }
             }
+            log("ALLOW: uid=" + uid + " pkgs=" + Arrays.toString(packages)
+                    + " keyguardLocked=" + locked + " allow=" + allow + " -> " + ok);
+            return ok;
         } catch (Throwable t) {
             if (!sFocusErrorLogged) {
                 sFocusErrorLogged = true;
-                log("focus lookup failed; Meta will be blocked - " + t);
+                log("ALLOW: focus lookup FAILED -> " + t);
             }
+            return false;
         }
-        return false;
     }
 
     private static boolean suppressFallback(KeyEvent e) {
