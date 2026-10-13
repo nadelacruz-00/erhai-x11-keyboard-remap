@@ -56,27 +56,49 @@ public class MainHook implements IXposedHookLoadPackage {
             return;
         }
 
-        // The master switch, read ONCE at load. When it is off we install no hooks whatsoever,
-        // which is the cleanest possible "off": nothing is intercepted and the keyboard is
-        // untouched. This is also why OFF can hand Meta back to Oplus's own gesture without any
-        // focus tracking - there is simply nothing to track.
-        boolean enabled = true;
-        try {
-            Context ctx = AndroidAppHelper.currentApplication();
-            if (ctx != null) {
-                enabled = Config.isEnabled(ctx.getContentResolver());
-            }
-        } catch (Throwable t) {
-            log("could not read the master switch, assuming ON: " + t);
-        }
-
-        log("=== KbRemap loaded - remap is " + (enabled ? "ENABLED" : "DISABLED") + " ===");
-        if (!enabled) {
-            return;
-        }
+        // THE MASTER SWITCH CANNOT BE READ HERE.
+        //
+        // This runs very early in boot, before the Settings provider is up. Reading it throws
+        // NullPointerException from IActivityManager.getContentProvider, and any "default to
+        // enabled" fallback then silently installs hooks even when the switch is OFF - which is
+        // exactly what happened on device: the switch said off, the keymap was stock, and the
+        // Search key was still being swallowed.
+        //
+        // So the hooks are installed unconditionally, and each of them asks enabled() - which
+        // resolves the switch LAZILY on the first key event, when Settings is definitely
+        // available, then caches it for the rest of the boot.
+        log("=== KbRemap loaded - master switch resolved on first key event ===");
 
         hookQueueing(lp);
         hookFallback(lp);
+    }
+
+    /** -1 unknown, 0 off, 1 on. Resolved on first use; the switch is defined as boot-applied. */
+    private static volatile int sEnabled = -1;
+
+    private static boolean enabled() {
+        int cached = sEnabled;
+        if (cached >= 0) {
+            return cached == 1;
+        }
+        boolean on = true;
+        boolean resolved = false;
+        try {
+            Context ctx = AndroidAppHelper.currentApplication();
+            if (ctx != null) {
+                on = Config.isEnabled(ctx.getContentResolver());
+                resolved = true;
+            }
+        } catch (Throwable t) {
+            log("master switch not readable yet, will retry: " + t);
+        }
+        if (!resolved) {
+            // Never cache an assumption: if Settings was not up yet, try again on the next key.
+            return on;
+        }
+        sEnabled = on ? 1 : 0;
+        log("=== master switch: remap is " + (on ? "ENABLED" : "DISABLED") + " ===");
+        return on;
     }
 
     private static void log(String s) {
@@ -97,6 +119,9 @@ public class MainHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam p) {
+                            if (!enabled()) {
+                                return; // switch off: intercept nothing at all
+                            }
                             KeyEvent e = (KeyEvent) p.args[0];
                             if (e == null) {
                                 return;
@@ -144,6 +169,9 @@ public class MainHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam p) {
+                            if (!enabled()) {
+                                return; // switch off: intercept nothing at all
+                            }
                             KeyEvent e = (KeyEvent) p.args[1];
                             if (e != null && (isMetaRelated(e) || isSearch(e) || isTopRow(e))) {
                                 p.setResult(null);
