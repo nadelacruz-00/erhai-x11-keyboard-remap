@@ -15,9 +15,21 @@ android {
         versionName '1.0'
     }
 
+    // Committed debug keystore: CI runners generate a fresh one per job, which would give every
+    // build a different signature and make in-place updates impossible.
+    signingConfigs {
+        debug {
+            storeFile file("$rootDir/keystore/debug.keystore")
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+
     buildTypes {
         debug {
             minifyEnabled false
+            signingConfig signingConfigs.debug
         }
         release {
             minifyEnabled false
