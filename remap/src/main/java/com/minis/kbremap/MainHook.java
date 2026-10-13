@@ -1,13 +1,23 @@
 package com.minis.kbremap;
 
+import android.app.KeyguardManager;
 import android.app.AndroidAppHelper;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.IBinder;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.KeyEvent;
 
+import java.io.BufferedReader;
+import java.io.FileReader;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -18,58 +28,90 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 /**
  * LSPosed module for the OnePlus Pad 3 official (pogo) keyboard.
  *
- * Progress so far:
- *   v1  hook point proven - PhoneWindowManager.interceptKeyBeforeQueueing sees the real Meta
- *       press (code=117 scan=125 dev=17), but forcing ACTION_PASS_TO_USER was not enough.
- *   v2  the real Oplus classes were found in /system/framework/oplus-services.jar and blocked;
- *       this DID stop Oplus's Meta behaviour (Gemini long-press no longer fires) - but the app
- *       still receives nothing.
+ * WHY THIS LAYER
+ * --------------
+ * v1-v3 hooked PhoneWindowManager.interceptKeyBeforeQueueing. That runs too late: Android's
+ * key-gesture layer (KeyGestureController, which on this device carries an Oplus "MetaKeyHandler")
+ * consumes the Meta key AFTER PhoneWindowManager returns and BEFORE the event is dispatched.
+ * That is why forcing ACTION_PASS_TO_USER never reached the app.
  *
- * v3 is a DIAGNOSTIC build. The key question: does the Meta event survive as far as
- * interceptKeyBeforeDispatching (i.e. was it actually dispatched to a window)?
- *   - if YES -> the event reaches the dispatcher but not the app
- *   - if NO  -> something between queueing and dispatching consumes it
+ * This version hooks com.android.server.input.InputManagerService instead - before the gesture
+ * policy - which is the approach proven by Drun555/oneplus-meta-gate on this same tablet.
  *
- * Live flags (no reboot needed):
- *     settings put global kbremap_flags <n>
+ * WHAT IT DOES
+ * ------------
+ *   interceptKeyBeforeQueueing(KeyEvent, int) -> int
+ *       Meta / Meta-combos : return 1 = pass to dispatcher, bypassing Android's gestures
+ *       Search             : return 0 = drop
+ *       anything else      : -2 = leave stock policy completely alone
+ *   interceptKeyBeforeDispatching(IBinder, KeyEvent, int) -> long
+ *       Meta combos are delivered only when the FOCUSED window belongs to an allowed package,
+ *       otherwise consumed. -2 leaves stock behaviour alone.
+ *   dispatchUnhandledKey(IBinder, KeyEvent, int) -> KeyEvent
+ *       suppress the fallback for the keys we own.
  *
- *   1   reclaim Meta -> ACTION_PASS_TO_USER              (default ON)
- *   2   block OplusModifierShortcutManager                (default ON)
- *   4   block KeyGestureControllerExtlmpl (Oplus)         (default ON)
- *   8   block PhoneWindowManagerExtImpl launcher keys     (default ON)
- *   16  log every key event                               (default OFF)
- *   32  allow object-returning methods to be nulled       (default ON)
- *   64  block AOSP KeyGestureController.handleKeyGestureEvent (default ON)
+ * ESCAPE and the TOP ROW are NOT handled here on purpose: a Java hook cannot change a keycode,
+ * because the native InputDispatcher dispatches its own copy of the event. Those need the keymap
+ * layer (the KernelSU module: key 158 ESCAPE, key 193 FUNCTION, top row -> F1..F12).
+ *
+ * SAFETY
+ * ------
+ *   - only Meta/Search events are ever overridden; every other key is untouched
+ *   - kill switch:  settings put global kbremap_flags 0     (takes effect within a second)
+ *   - allow-list empty  =>  Meta is blocked everywhere (stock-ish, never worse)
+ *   - if the focused window cannot be resolved, Meta is blocked rather than leaked
+ *
+ * LIVE FLAGS  (settings put global kbremap_flags <n>)
+ *     1    route Meta through the dispatcher        (default ON)
+ *     2    drop the Search key everywhere           (default ON)
+ *     4    legacy: also force PASS_TO_USER at PhoneWindowManager (default OFF)
+ *     8    neutralise the Oplus shortcut classes    (default OFF)
+ *     16   log every key event                      (default OFF)
  */
 public class MainHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "KbRemap";
     private static final String SYSTEM = "android";
-    private static final int ACTION_PASS_TO_USER = 1;
 
+    private static final String CLS_IMS = "com.android.server.input.InputManagerService";
     private static final String CLS_PWM = "com.android.server.policy.PhoneWindowManager";
-    private static final String CLS_PWM_EXT = "com.android.server.policy.PhoneWindowManagerExtImpl";
-    private static final String CLS_OPLUS_MOD = "com.android.server.policy.OplusModifierShortcutManager";
-    private static final String CLS_KGESTURE = "com.android.server.input.KeyGestureController";
 
-    // From /system/framework/oplus-services.jar. "Extlmpl" really is spelled with a lowercase L -
-    // that is Oplus's own typo and it is part of the real class name.
-    private static final String CLS_KG_EXT = "com.android.server.input.KeyGestureControllerExtlmpl";
-    private static final String CLS_KG_EXT_META = CLS_KG_EXT + "$MetaKeyHandler";
-    private static final String CLS_KG_MGR = "com.android.server.input.OplusKeyGestureManager";
+    private static final int ACTION_PASS_TO_USER = 1;
+    private static final int POLICY_FLAG_INTERACTIVE = 0x20000000;
+
+    /** "leave stock policy alone" - shorter than an int, so it can never be a real result. */
+    private static final int PASSTHROUGH = -2;
 
     private static final int F_META = 1;
-    private static final int F_OPLUS_MOD = 2;
-    private static final int F_KGESTURE = 4;
-    private static final int F_PWM_EXT = 8;
+    private static final int F_SEARCH = 2;
+    private static final int F_LEGACY_PWM = 4;
+    private static final int F_OPLUS_BLOCK = 8;
     private static final int F_LOG_ALL = 16;
-    private static final int F_NULL_OBJECTS = 32;
-    private static final int F_BLOCK_AOSP_KG = 64;
-    private static final int DEFAULT_FLAGS =
-            F_META | F_OPLUS_MOD | F_KGESTURE | F_PWM_EXT | F_NULL_OBJECTS | F_BLOCK_AOSP_KG;
+    private static final int DEFAULT_FLAGS = F_META | F_SEARCH;
+
+    private static final String CFG_FILE = "/data/system/minis_kbremap/apps.conf";
+    private static final String[] DEFAULT_APPS = {"com.termux.x11"};
+
+    // ---------------------------------------------------------------- state
+
+    private static final Set<Long> sQueued = new HashSet<>();
+    private static final Map<Long, IBinder> sRouted = new HashMap<>();
 
     private static volatile int sFlags = DEFAULT_FLAGS;
     private static volatile long sFlagsAt = 0L;
+
+    private static volatile Set<String> sApps = new HashSet<>(Arrays.asList(DEFAULT_APPS));
+    private static volatile long sAppsAt = 0L;
+
+    private static Method sGetInfo;
+    private static Field sOwnerUid;
+    private static boolean sFocusErrorLogged;
+
+    // ---------------------------------------------------------------- helpers
+
+    private static void log(String s) {
+        XposedBridge.log(TAG + ": " + s);
+    }
 
     private static int flags() {
         long now = SystemClock.uptimeMillis();
@@ -78,9 +120,9 @@ public class MainHook implements IXposedHookLoadPackage {
         }
         sFlagsAt = now;
         try {
-            Context ctx = AndroidAppHelper.currentApplication();
-            if (ctx != null) {
-                String v = Settings.Global.getString(ctx.getContentResolver(), "kbremap_flags");
+            Context c = AndroidAppHelper.currentApplication();
+            if (c != null) {
+                String v = Settings.Global.getString(c.getContentResolver(), "kbremap_flags");
                 sFlags = (v == null || v.trim().isEmpty()) ? DEFAULT_FLAGS
                         : Integer.parseInt(v.trim());
             }
@@ -90,89 +132,228 @@ public class MainHook implements IXposedHookLoadPackage {
         return sFlags;
     }
 
-    private static void log(String s) {
-        XposedBridge.log(TAG + ": " + s);
+    /** Allowed packages: Settings.Global wins, otherwise the config file. Cached 2 s. */
+    private static Set<String> apps(Context ctx) {
+        long now = SystemClock.uptimeMillis();
+        if (now - sAppsAt < 2000L) {
+            return sApps;
+        }
+        sAppsAt = now;
+        Set<String> next = null;
+        try {
+            if (ctx != null) {
+                String v = Settings.Global.getString(ctx.getContentResolver(), "kbremap_apps");
+                if (v != null && !v.trim().isEmpty()) {
+                    next = new HashSet<>();
+                    for (String p : v.split(",")) {
+                        p = p.trim();
+                        if (isPackage(p)) {
+                            next.add(p);
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        if (next == null) {
+            try (BufferedReader r = new BufferedReader(new FileReader(CFG_FILE))) {
+                Set<String> file = new HashSet<>();
+                String line;
+                while ((line = r.readLine()) != null) {
+                    line = line.trim();
+                    if (isPackage(line)) {
+                        file.add(line);
+                    }
+                }
+                next = file;
+            } catch (Throwable ignored) {
+                // keep the previous list
+            }
+        }
+        if (next != null) {
+            if (!next.equals(sApps)) {
+                log("allow-list = " + next);
+            }
+            sApps = next;
+        }
+        return sApps;
     }
 
-    private static boolean isMeta(KeyEvent e) {
-        int c = e.getKeyCode();
-        return c == KeyEvent.KEYCODE_META_LEFT || c == KeyEvent.KEYCODE_META_RIGHT;
+    private static boolean isPackage(String s) {
+        return s != null && s.matches("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+");
+    }
+
+    private static long id(KeyEvent e) {
+        return ((long) e.getDeviceId() << 32) | (e.getKeyCode() & 0xffffffffL);
+    }
+
+    private static boolean isSearch(KeyEvent e) {
+        // The physical Search key emits KEYCODE_F23 (Linux scan 193) on this keyboard.
+        return e.getKeyCode() == KeyEvent.KEYCODE_SEARCH
+                || (e.getKeyCode() == KeyEvent.KEYCODE_F23 && e.getScanCode() == 193);
+    }
+
+    private static boolean isMetaRelated(KeyEvent e) {
+        int k = e.getKeyCode();
+        return k == KeyEvent.KEYCODE_META_LEFT || k == KeyEvent.KEYCODE_META_RIGHT
+                || e.isMetaPressed();
+    }
+
+    private static boolean relevant(KeyEvent e) {
+        return isSearch(e) || isMetaRelated(e);
     }
 
     private static String ev(KeyEvent k) {
         if (k == null) {
             return "null";
         }
-        return "KeyEvent(a=" + k.getAction() + ", code=" + k.getKeyCode()
-                + ", scan=" + k.getScanCode() + ", dev=" + k.getDeviceId()
-                + ", meta=0x" + Integer.toHexString(k.getMetaState())
-                + ", flags=0x" + Integer.toHexString(k.getFlags()) + ")";
+        return "a=" + k.getAction() + " code=" + k.getKeyCode() + " scan=" + k.getScanCode()
+                + " dev=" + k.getDeviceId() + " meta=0x" + Integer.toHexString(k.getMetaState());
     }
 
-    private static String describeArgs(Object[] args) {
-        if (args == null) {
-            return "[]";
+    // ---------------------------------------------------------------- queue policy
+
+    /** @return PASSTHROUGH to leave stock policy alone, else the policy-flags result. */
+    private static synchronized int queue(KeyEvent e, int policyFlags) {
+        long id = id(e);
+        boolean special = relevant(e) || sQueued.contains(id);
+        if (!special) {
+            return PASSTHROUGH;
         }
-        StringBuilder b = new StringBuilder("[");
-        for (int i = 0; i < args.length; i++) {
-            if (i > 0) {
-                b.append(", ");
-            }
-            Object a = args[i];
-            if (a instanceof KeyEvent) {
-                b.append(ev((KeyEvent) a));
-            } else {
-                b.append(a);
-            }
+        if (e.getAction() == KeyEvent.ACTION_UP) {
+            sQueued.remove(id);
+        } else {
+            sQueued.add(id);
         }
-        return b.append(']').toString();
+
+        int f = flags();
+        if ((f & F_LOG_ALL) != 0) {
+            log("QUEUE " + ev(e) + " policy=0x" + Integer.toHexString(policyFlags));
+        }
+
+        if (isSearch(e)) {
+            if ((f & F_SEARCH) == 0) {
+                return PASSTHROUGH;
+            }
+            log("QUEUE drop SEARCH " + ev(e));
+            return 0;
+        }
+
+        if (isMetaRelated(e)) {
+            if ((f & F_META) == 0) {
+                return PASSTHROUGH;
+            }
+            boolean interactive = (policyFlags & POLICY_FLAG_INTERACTIVE) != 0;
+            log("QUEUE meta " + ev(e) + " interactive=" + interactive
+                    + " -> " + (interactive ? "PASS_TO_USER(bypass gestures)" : "drop"));
+            return interactive ? ACTION_PASS_TO_USER : 0;
+        }
+
+        return PASSTHROUGH;
     }
+
+    /** @return PASSTHROUGH, or 0 = deliver to focused window, -1 = consume. */
+    private static synchronized int dispatch(Context ctx, Object wm, IBinder token, KeyEvent e) {
+        long id = id(e);
+        boolean tracked = sRouted.containsKey(id);
+        if (!relevant(e) && !tracked) {
+            return PASSTHROUGH;
+        }
+        if (isSearch(e)) {
+            return -1; // Search is blocked everywhere
+        }
+
+        boolean plainEscape = e.getKeyCode() == KeyEvent.KEYCODE_ESCAPE && !e.isMetaPressed();
+        boolean allow = token != null && (plainEscape || allowed(ctx, wm, token));
+
+        boolean permit;
+        if (tracked) {
+            IBinder bound = sRouted.get(id);
+            permit = allow && bound != null && bound.equals(token);
+        } else {
+            permit = allow && e.getAction() == KeyEvent.ACTION_DOWN;
+        }
+
+        if (e.getAction() == KeyEvent.ACTION_UP) {
+            sRouted.remove(id);
+        } else if (!tracked) {
+            sRouted.put(id, permit ? token : null);
+        }
+
+        int f = flags();
+        if ((f & F_LOG_ALL) != 0 || !permit) {
+            log("DISPATCH " + ev(e) + " token=" + token + " allow=" + allow
+                    + " -> " + (permit ? "deliver" : "consume"));
+        }
+        return permit ? 0 : -1;
+    }
+
+    private static boolean allowed(Context ctx, Object wm, IBinder token) {
+        if (ctx == null || wm == null || token == null) {
+            return false;
+        }
+        try {
+            KeyguardManager km = (KeyguardManager) ctx.getSystemService(Context.KEYGUARD_SERVICE);
+            if (km == null || km.isKeyguardLocked()) {
+                return false;
+            }
+            if (sGetInfo == null) {
+                sGetInfo = Class.forName("com.android.server.wm.WindowManagerInternal")
+                        .getMethod("getKeyInterceptionInfoFromToken", IBinder.class);
+                sOwnerUid = Class.forName("com.android.internal.policy.KeyInterceptionInfo")
+                        .getField("windowOwnerUid");
+            }
+            Object info = sGetInfo.invoke(wm, token);
+            if (info == null) {
+                return false;
+            }
+            int uid = sOwnerUid.getInt(info);
+            PackageManager pm = ctx.getPackageManager();
+            String[] packages = pm.getPackagesForUid(uid);
+            Set<String> allow = apps(ctx);
+            if (packages != null) {
+                for (String p : packages) {
+                    if (allow.contains(p)) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            if (!sFocusErrorLogged) {
+                sFocusErrorLogged = true;
+                log("focus lookup failed; Meta will be blocked - " + t);
+            }
+        }
+        return false;
+    }
+
+    private static boolean suppressFallback(KeyEvent e) {
+        return relevant(e) || sRouted.containsKey(id(e));
+    }
+
+    // ---------------------------------------------------------------- hook wiring
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lp) {
         if (!SYSTEM.equals(lp.packageName)) {
             return;
         }
-        log("=== v3 loaded into " + lp.packageName + " process=" + lp.processName + " ===");
+        log("=== v4 loaded into " + lp.packageName + " ===");
 
-        hookQueueing(lp);
-        hookDispatching(lp);
+        hookImsQueueing(lp);
+        hookImsDispatching(lp);
+        hookImsFallback(lp);
 
-        // --- Oplus consumers (v2) --------------------------------------------
-        blockAll(lp, CLS_OPLUS_MOD, "enterDrawerMode", F_OPLUS_MOD);
-        blockAll(lp, CLS_OPLUS_MOD, "handleKeyGestureEvent", F_OPLUS_MOD);
-        blockAll(lp, CLS_OPLUS_MOD, "executeShortcutKey", F_OPLUS_MOD);
-        blockAll(lp, CLS_OPLUS_MOD, "launchIntentShortcut", F_OPLUS_MOD);
-        blockAll(lp, CLS_OPLUS_MOD, "launchAssistant", F_OPLUS_MOD);
-        blockAll(lp, CLS_OPLUS_MOD, "toggleControlPanel", F_OPLUS_MOD);
-        blockAll(lp, CLS_OPLUS_MOD, "takeAreaScreenShot", F_OPLUS_MOD);
+        if ((flags() & F_LEGACY_PWM) != 0) {
+            hookLegacyPwm(lp);
+        }
 
-        blockAll(lp, CLS_PWM_EXT, "interceptKeyEventToLauncherIfNeed", F_PWM_EXT);
-        blockAll(lp, CLS_PWM_EXT, "interceptKeyEventForAppShareModeIfNeed", F_PWM_EXT);
-        blockAll(lp, CLS_PWM_EXT, "interceptHomeKeyEventToLauncherIfNeed", F_PWM_EXT);
-
-        blockAll(lp, CLS_KG_EXT, "interceptOldShortcuts", F_KGESTURE);
-        blockAll(lp, CLS_KG_EXT, "interceptWinShortcuts", F_KGESTURE);
-        blockAll(lp, CLS_KG_EXT, "interceptMacShortcuts", F_KGESTURE);
-        blockAll(lp, CLS_KG_EXT, "getOplusMetaKeyGestureEvent", F_KGESTURE);
-        blockAll(lp, CLS_KG_EXT, "handleKeyGestureEvent", F_KGESTURE);
-        blockAll(lp, CLS_KG_EXT_META, "handleKeyGesture", F_KGESTURE);
-        blockAll(lp, CLS_KG_MGR, "handleKeyGestureEvent", F_KGESTURE);
-
-        // --- AOSP key-gesture layer: this is what turns a key into a "gesture" and
-        //     consumes the plain KeyEvent. v2 only observed it.
-        blockAll(lp, CLS_KGESTURE, "handleKeyGestureEvent", F_BLOCK_AOSP_KG);
-        blockAll(lp, CLS_KGESTURE, "getOplusMetaKeyGestureEvent", F_BLOCK_AOSP_KG);
-
-        dumpMethods(lp, CLS_KGESTURE);
-        dumpMethods(lp, CLS_KG_EXT);
-        dumpMethods(lp, "com.android.server.policy.SingleKeyGestureDetector");
-        dumpMethods(lp, "com.android.server.policy.OplusSingleKeyGestureDetector");
+        log("allow-list at load = " + apps(AndroidAppHelper.currentApplication()));
     }
 
-    private void hookQueueing(XC_LoadPackage.LoadPackageParam lp) {
+    private void hookImsQueueing(XC_LoadPackage.LoadPackageParam lp) {
         try {
-            XposedHelpers.findAndHookMethod(CLS_PWM, lp.classLoader,
+            XposedHelpers.findAndHookMethod(CLS_IMS, lp.classLoader,
                     "interceptKeyBeforeQueueing", KeyEvent.class, int.class,
                     new XC_MethodHook() {
                         @Override
@@ -181,125 +362,102 @@ public class MainHook implements IXposedHookLoadPackage {
                             if (e == null) {
                                 return;
                             }
-                            int f = flags();
-                            if ((f & F_LOG_ALL) != 0) {
-                                log("QUEUE-IN " + ev(e));
-                            }
-                            if (isMeta(e) && (f & F_META) != 0) {
-                                p.setResult(ACTION_PASS_TO_USER);
-                            }
-                        }
-
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam p) {
-                            KeyEvent e = (KeyEvent) p.args[0];
-                            if (e != null && isMeta(e)) {
-                                log("QUEUE-OUT " + ev(e) + " returned=0x"
-                                        + Integer.toHexString(p.getResult() == null ? -1
-                                        : ((Integer) p.getResult())));
+                            int r = queue(e, (Integer) p.args[1]);
+                            if (r != PASSTHROUGH) {
+                                p.setResult(r);
                             }
                         }
                     });
-            log("hooked interceptKeyBeforeQueueing OK");
+            log("hooked IMS.interceptKeyBeforeQueueing OK");
         } catch (Throwable t) {
-            log("!! interceptKeyBeforeQueueing FAILED: " + t);
+            log("!! IMS.interceptKeyBeforeQueueing FAILED: " + t);
         }
     }
 
-    /** The decisive probe: is this called for Meta at all? */
-    private void hookDispatching(XC_LoadPackage.LoadPackageParam lp) {
+    private void hookImsDispatching(XC_LoadPackage.LoadPackageParam lp) {
         try {
-            XposedHelpers.findAndHookMethod(CLS_PWM, lp.classLoader,
-                    "interceptKeyBeforeDispatching", IBinder.class, KeyEvent.class, int.class,
+            XposedHelpers.findAndHookMethod(CLS_IMS, lp.classLoader,
+                    "interceptKeyBeforeDispatching",
+                    IBinder.class, KeyEvent.class, int.class,
                     new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam p) {
                             KeyEvent e = (KeyEvent) p.args[1];
-                            if (e == null || !isMeta(e)) {
+                            if (e == null) {
                                 return;
                             }
-                            log("DISPATCH-IN " + ev(e));
-                            if ((flags() & F_META) != 0) {
-                                p.setResult(0L);
-                            }
-                        }
-
-                        @Override
-                        protected void afterHookedMethod(MethodHookParam p) {
-                            KeyEvent e = (KeyEvent) p.args[1];
-                            if (e != null && isMeta(e)) {
-                                log("DISPATCH-OUT " + ev(e) + " returned=" + p.getResult());
+                            Context ctx = contextOf(p.thisObject);
+                            Object wm = windowManagerOf(p.thisObject);
+                            int r = dispatch(ctx, wm, (IBinder) p.args[0], e);
+                            if (r != PASSTHROUGH) {
+                                p.setResult((long) r);
                             }
                         }
                     });
-            log("hooked interceptKeyBeforeDispatching OK");
+            log("hooked IMS.interceptKeyBeforeDispatching OK");
         } catch (Throwable t) {
-            log("!! interceptKeyBeforeDispatching FAILED: " + t);
+            log("!! IMS.interceptKeyBeforeDispatching FAILED: " + t);
         }
     }
 
-    /** Hook every overload; skip the original when its owning flag is set. */
-    private void blockAll(XC_LoadPackage.LoadPackageParam lp, String cls, String method,
-                          int flag) {
+    private void hookImsFallback(XC_LoadPackage.LoadPackageParam lp) {
         try {
-            Class<?> c = XposedHelpers.findClassIfExists(cls, lp.classLoader);
-            if (c == null) {
-                log("class NOT FOUND: " + cls);
-                return;
-            }
-            int n = XposedBridge.hookAllMethods(c, method, new XC_MethodHook() {
-                @Override
-                protected void beforeHookedMethod(MethodHookParam p) {
-                    int f = flags();
-                    boolean on = (f & flag) != 0;
-                    log((on ? "BLOCK " : "SEE ") + cls + "#" + method
-                            + " args=" + describeArgs(p.args));
-                    if (!on) {
-                        return;
-                    }
-                    Class<?> rt = ((Method) p.method).getReturnType();
-                    if (rt == boolean.class) {
-                        p.setResult(false);
-                    } else if (rt == void.class) {
-                        p.setResult(null);
-                    } else if (rt == long.class) {
-                        p.setResult(0L);
-                    } else if (rt == int.class) {
-                        p.setResult(0);
-                    } else if (!rt.isPrimitive() && (f & F_NULL_OBJECTS) != 0) {
-                        // e.g. getOplusMetaKeyGestureEvent() -> returning null stops the caller
-                        // from getting a gesture object at all.
-                        log("   -> nulling " + rt.getSimpleName() + " result");
-                        p.setResult(null);
-                    }
-                }
-            }).size();
-            log("hooked " + cls + "#" + method + " (" + n + " overload(s))");
+            XposedHelpers.findAndHookMethod(CLS_IMS, lp.classLoader,
+                    "dispatchUnhandledKey",
+                    IBinder.class, KeyEvent.class, int.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam p) {
+                            KeyEvent e = (KeyEvent) p.args[1];
+                            if (e != null && suppressFallback(e)) {
+                                p.setResult(null);
+                            }
+                        }
+                    });
+            log("hooked IMS.dispatchUnhandledKey OK");
         } catch (Throwable t) {
-            log("hook " + cls + "#" + method + " FAILED: " + t);
+            log("!! IMS.dispatchUnhandledKey FAILED: " + t);
         }
     }
 
-    private void dumpMethods(XC_LoadPackage.LoadPackageParam lp, String cls) {
+    /** Belt and braces: if the IMS hook ever fails, this still frees Meta at the policy layer. */
+    private void hookLegacyPwm(XC_LoadPackage.LoadPackageParam lp) {
         try {
-            Class<?> c = XposedHelpers.findClassIfExists(cls, lp.classLoader);
-            if (c == null) {
-                log("class NOT FOUND: " + cls);
-                return;
-            }
-            for (Method m : c.getDeclaredMethods()) {
-                log("  " + c.getSimpleName() + "#" + m.getName() + " : "
-                        + m.getReturnType().getSimpleName());
-            }
-            for (Class<?> inner : c.getDeclaredClasses()) {
-                log("  inner " + inner.getSimpleName());
-                for (Method m : inner.getDeclaredMethods()) {
-                    log("    " + inner.getSimpleName() + "#" + m.getName() + " : "
-                            + m.getReturnType().getSimpleName());
-                }
-            }
+            XposedHelpers.findAndHookMethod(CLS_PWM, lp.classLoader,
+                    "interceptKeyBeforeQueueing", KeyEvent.class, int.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam p) {
+                            KeyEvent e = (KeyEvent) p.args[0];
+                            if (e != null && isMetaRelated(e) && (flags() & F_META) != 0) {
+                                p.setResult(ACTION_PASS_TO_USER);
+                            }
+                        }
+                    });
+            log("hooked legacy PhoneWindowManager OK");
         } catch (Throwable t) {
-            log("dumpMethods " + cls + " FAILED: " + t);
+            log("!! legacy PhoneWindowManager FAILED: " + t);
+        }
+    }
+
+    private static Context contextOf(Object ims) {
+        try {
+            Object ctx = XposedHelpers.getObjectField(ims, "mContext");
+            if (ctx instanceof Context) {
+                return (Context) ctx;
+            }
+        } catch (Throwable ignored) {
+        }
+        return AndroidAppHelper.currentApplication();
+    }
+
+    /** InputManagerService -> mKeyGestureController -> mWindowManagerInternal */
+    private static Object windowManagerOf(Object ims) {
+        try {
+            Object kgc = XposedHelpers.getObjectField(ims, "mKeyGestureController");
+            return XposedHelpers.getObjectField(kgc, "mWindowManagerInternal");
+        } catch (Throwable t) {
+            return null;
         }
     }
 }
