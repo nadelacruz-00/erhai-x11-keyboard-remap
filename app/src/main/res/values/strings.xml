@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">KeyLog</string>
+    <string name="app_name">Erhai X-11 KeyLog</string>
     <string name="title">KeyLog — what apps actually receive</string>
     <string name="hint">Keep this screen focused and press the key. If nothing appears, the key never reached the app layer. Newest event is at the top.</string>
     <string name="idle">(press a key)</string>

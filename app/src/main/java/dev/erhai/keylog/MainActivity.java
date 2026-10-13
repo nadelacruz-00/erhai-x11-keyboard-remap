@@ -1,4 +1,4 @@
-package com.minis.keylog;
+package dev.erhai.keylog;
 
 import android.app.Activity;
 import android.content.ClipData;

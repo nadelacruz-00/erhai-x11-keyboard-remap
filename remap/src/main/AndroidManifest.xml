@@ -5,7 +5,7 @@
       Needed so the settings screen can write Settings.Global, which the hook reads.
       This is a privileged permission: declaring it here is harmless, but it must be granted
       once from a root shell:
-          pm grant com.minis.kbremap android.permission.WRITE_SECURE_SETTINGS
+          pm grant dev.erhai.kbremap android.permission.WRITE_SECURE_SETTINGS
       Without it the screen still displays everything, just read-only.
     -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />

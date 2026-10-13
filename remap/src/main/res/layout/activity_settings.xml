@@ -149,6 +149,18 @@
             android:textColor="#FFD54F"
             android:visibility="gone" />
 
+        <!-- Shown only when the hook has not reported itself this boot, i.e. LSPosed has not
+             loaded the module yet. Enabling it is a manual step LSPosed keeps deliberate. -->
+        <TextView
+            android:id="@+id/hookNote"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/gap_s"
+            android:text="@string/lsposed_hint"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="#FFD54F"
+            android:visibility="gone" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnReboot"
             style="?attr/materialButtonTonalStyle"

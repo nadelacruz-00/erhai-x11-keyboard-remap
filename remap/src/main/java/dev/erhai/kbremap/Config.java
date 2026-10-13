@@ -1,4 +1,4 @@
-package com.minis.kbremap;
+package dev.erhai.kbremap;
 
 import android.content.ContentResolver;
 import android.provider.Settings;
@@ -29,6 +29,14 @@ public final class Config {
 
     /** Diagnostic only: bit 16 logs every key event the hook sees. */
     public static final String KEY_LOG = "kbremap_log";
+
+    /**
+     * Written by the hook (which runs inside system_server and can reach Settings) with the current
+     * boot id, so the settings screen can tell whether LSPosed actually loaded the module this
+     * boot - instead of leaving the user guessing. Enabling a module is a security boundary
+     * LSPosed deliberately keeps manual, so this is how the app detects that step.
+     */
+    public static final String KEY_HOOK_ACTIVE = "kbremap_hook_active";
 
     /** The KernelSU module that carries the keylayout. */
     public static final String KSU_MODULE_ID = "pad3_keymap";

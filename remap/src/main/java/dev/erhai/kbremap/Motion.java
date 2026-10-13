@@ -1,4 +1,4 @@
-package com.minis.kbremap;
+package dev.erhai.kbremap;
 
 import android.view.View;
 

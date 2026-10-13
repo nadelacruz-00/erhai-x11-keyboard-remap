@@ -1,6 +1,6 @@
 #!/system/bin/sh
-# Pad3 Keymap (Layer A) - static keylayout overlay for the OnePlus Pad 3 keyboard.
-ui_print "- Pad3 Keymap (Layer A)"
+# Erhai X-11 Keyboard Remap - keymap - static keylayout overlay for the OnePlus Pad 3 keyboard.
+ui_print "- Erhai X-11 Keyboard Remap - keymap"
 ui_print "  Esc      scan 158   BACK     -> ESCAPE"
 ui_print "  Search   scan 193   F23      -> FUNCTION"
 ui_print "  Top row  scans 224..115      -> F1..F12"

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Pad3 Kb Remap</string>
+    <string name="app_name">Erhai X-11 Keyboard Remap</string>
     <string name="xposed_desc">Remaps the OnePlus Pad 3 keyboard: the bot key becomes a real Super, Esc becomes a real Escape, the top row becomes F1-F12, and holding Search (Fn) restores each top-row key\'s original action. One master switch, applied at boot.</string>
 
     <!-- status -->
@@ -17,8 +17,10 @@
     <string name="pending">Reboot to apply this change</string>
     <string name="reboot_now">Reboot now</string>
     <string name="rebooting">Rebooting…</string>
+    <string name="ksu_installed">Keymap installed — reboot to apply</string>
 
-    <!-- problems -->
-    <string name="permission_missing">Not granted WRITE_SECURE_SETTINGS, so changes cannot be saved.\nRun once:  pm grant com.minis.kbremap android.permission.WRITE_SECURE_SETTINGS</string>
-    <string name="root_missing">KernelSU could not be reached, so the keymap half was not changed. Enable or disable “Pad3 Keymap” in the KernelSU manager yourself, then reboot.</string>
+    <!-- problems / setup -->
+    <string name="permission_missing">Not granted WRITE_SECURE_SETTINGS, so changes cannot be saved.\nRun once:  pm grant dev.erhai.kbremap android.permission.WRITE_SECURE_SETTINGS</string>
+    <string name="root_missing">KernelSU could not be reached, so the keymap half was not changed. Enable or disable the “Erhai X-11 Keyboard Remap - keymap” module in the KernelSU manager yourself, then reboot.</string>
+    <string name="lsposed_hint">The hook is not active yet. Enable “Erhai X-11 Keyboard Remap” in the LSPosed manager with scope System Framework, then reboot.</string>
 </resources>

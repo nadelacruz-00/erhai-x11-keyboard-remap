@@ -1,4 +1,4 @@
-package com.minis.kbremap;
+package dev.erhai.kbremap;
 
 import android.app.AndroidAppHelper;
 import android.content.Context;
@@ -88,6 +88,14 @@ public class MainHook implements IXposedHookLoadPackage {
             if (ctx != null) {
                 on = Config.isEnabled(ctx.getContentResolver());
                 resolved = true;
+                // Announce that the hook is loaded this boot, so the settings screen can confirm
+                // the LSPosed half is live rather than leaving it to guesswork.
+                try {
+                    android.provider.Settings.Global.putString(ctx.getContentResolver(),
+                            Config.KEY_HOOK_ACTIVE, bootId());
+                } catch (Throwable ignored) {
+                    // purely informational
+                }
             }
         } catch (Throwable t) {
             log("master switch not readable yet, will retry: " + t);
@@ -99,6 +107,16 @@ public class MainHook implements IXposedHookLoadPackage {
         sEnabled = on ? 1 : 0;
         log("=== master switch: remap is " + (on ? "ENABLED" : "DISABLED") + " ===");
         return on;
+    }
+
+    private static String bootId() {
+        try (java.io.BufferedReader r = new java.io.BufferedReader(
+                new java.io.FileReader("/proc/sys/kernel/random/boot_id"))) {
+            String line = r.readLine();
+            return line == null ? "" : line.trim();
+        } catch (Throwable t) {
+            return "";
+        }
     }
 
     private static void log(String s) {
