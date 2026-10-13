@@ -49,7 +49,7 @@
             android:textColor="#FFD54F"
             android:visibility="gone" />
 
-        <!-- ---------------- behaviour ---------------- -->
+        <!-- Behaviour -->
 
         <TextView
             android:layout_width="match_parent"
@@ -264,7 +264,7 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- ---------------- apps ---------------- -->
+        <!-- Apps -->
 
         <TextView
             android:layout_width="match_parent"
