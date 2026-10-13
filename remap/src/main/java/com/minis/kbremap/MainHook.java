@@ -525,47 +525,59 @@ public class MainHook implements IXposedHookLoadPackage {
         if (cached != null) {
             return cached;
         }
+        if (ims == null) {
+            return null;
+        }
+        // Must use the HOST classloader: Class.forName() from the module cannot see
+        // com.android.server.* and failed with ClassNotFoundException earlier.
+        ClassLoader cl = ims.getClass().getClassLoader();
 
         // route 1: LocalServices.getService(WindowManagerInternal.class)
         try {
-            Class<?> ls = Class.forName("com.android.server.LocalServices");
-            Method get = ls.getMethod("getService", Class.class);
-            Class<?> wmi = Class.forName("com.android.server.wm.WindowManagerInternal");
-            Object wm = get.invoke(null, wmi);
-            if (wm != null) {
-                if (!sWmLogged) {
-                    sWmLogged = true;
-                    log("windowManager resolved via LocalServices ("
-                            + wm.getClass().getName() + ")");
+            Class<?> wmi = XposedHelpers.findClassIfExists(
+                    "com.android.server.wm.WindowManagerInternal", cl);
+            Class<?> ls = wmi == null ? null
+                    : XposedHelpers.findClassIfExists("com.android.server.LocalServices", cl);
+            if (ls != null) {
+                Method get = ls.getMethod("getService", Class.class);
+                Object wm = get.invoke(null, wmi);
+                if (wm != null) {
+                    log("windowManager resolved via LocalServices (" + wm.getClass().getName() + ")");
+                    sWmCache = wm;
+                    return wm;
                 }
+            }
+        } catch (Throwable t) {
+            log("LocalServices route FAILED: " + t);
+        }
+
+        // route 2: a DIRECT field on InputManagerService - this is the OxygenOS layout
+        // (confirmed by dumping the fields: InputManagerService.mWindowManagerInternal = LocalService)
+        try {
+            Object wm = XposedHelpers.getObjectField(ims, "mWindowManagerInternal");
+            if (wm != null) {
+                log("windowManager resolved via InputManagerService.mWindowManagerInternal");
                 sWmCache = wm;
                 return wm;
             }
-            if (!sWmLogged) {
-                sWmLogged = true;
-                log("LocalServices.getService(WindowManagerInternal) returned null");
-            }
         } catch (Throwable t) {
-            if (!sWmLogged) {
-                sWmLogged = true;
-                log("LocalServices route FAILED: " + t);
-            }
+            log("IMS.mWindowManagerInternal FAILED: " + t);
         }
 
-        // route 2: private fields, exactly as the reference module does
+        // route 3: mKeyGestureController.mWindowManagerInternal - the crDroid layout used by
+        // the reference module
         try {
             Object kgc = XposedHelpers.getObjectField(ims, "mKeyGestureController");
             Object wm = XposedHelpers.getObjectField(kgc, "mWindowManagerInternal");
             if (wm != null) {
-                log("windowManager resolved via private fields");
+                log("windowManager resolved via mKeyGestureController.mWindowManagerInternal");
                 sWmCache = wm;
                 return wm;
             }
         } catch (Throwable t) {
-            log("field route FAILED: " + t);
+            log("mKeyGestureController route FAILED: " + t);
         }
 
-        dumpFields(ims, "InputManagerService");
         return null;
     }
 
