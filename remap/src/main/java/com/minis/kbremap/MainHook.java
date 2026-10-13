@@ -437,6 +437,23 @@ public class MainHook implements IXposedHookLoadPackage {
                             if (e == null) {
                                 return;
                             }
+
+                            // ---- Layer A2: Fn (Search) restores the ORIGINAL top-row behaviour ----
+                            // A Java hook cannot change a key code (the native dispatcher dispatches
+                            // its own copy), so instead of rewriting we re-inject the original code
+                            // and swallow the F-key. Injection is verified working on this device:
+                            //   input keyevent 220  ->  screen_brightness 1270 -> 1095
+                            // The injected event carries a different key code and no scan code, so it
+                            // cannot re-enter this branch - no recursion.
+                            if ((flags() & F_FN_RESTORE) != 0 && isTopRow(e) && e.isFunctionPressed()) {
+                                int orig = topRowOriginal(e);
+                                if (orig != -1) {
+                                    injectKey(p.thisObject, e, orig);
+                                    p.setResult(0); // never deliver the F-key itself
+                                    return;
+                                }
+                            }
+
                             int r = queue(e, (Integer) p.args[1]);
                             if (r != PASSTHROUGH) {
                                 p.setResult(r);
@@ -610,6 +627,70 @@ public class MainHook implements IXposedHookLoadPackage {
             }
         } catch (Throwable t) {
             log("  field dump failed: " + t);
+        }
+    }
+
+    // ------------------------------------------------------------- Fn restore (Layer A2)
+
+    /** flag 256: Fn (Search) re-injects the top row's original key code. Default ON. */
+    private static final int F_FN_RESTORE = 256;
+
+    /** Top row left-to-right is F1..F12 in the keylayout; these are its ORIGINAL key codes. */
+    private static final int[] TOP_ROW_SCANS = {
+            224, 225, 183, 186, 99, 194, 165, 164, 163, 113, 114, 115};
+    private static final String[] TOP_ROW_ORIGINAL_NAMES = {
+            "BRIGHTNESS_DOWN", "BRIGHTNESS_UP", "F13", "F16", "SYSRQ", "F24",
+            "MEDIA_PREVIOUS", "MEDIA_PLAY_PAUSE", "MEDIA_NEXT",
+            "VOLUME_MUTE", "VOLUME_DOWN", "VOLUME_UP"};
+    private static final int[] TOP_ROW_ORIGINAL = new int[TOP_ROW_SCANS.length];
+
+    /** Several KEYCODE_* constants are @hide in the SDK, so resolve them by name. */
+    private static int kc(String name) {
+        try {
+            return XposedHelpers.getStaticIntField(KeyEvent.class, "KEYCODE_" + name);
+        } catch (Throwable t) {
+            log("kc(" + name + ") unresolved: " + t);
+            return -1;
+        }
+    }
+
+    private static boolean isTopRow(KeyEvent e) {
+        int s = e.getScanCode();
+        for (int scan : TOP_ROW_SCANS) {
+            if (scan == s) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int topRowOriginal(KeyEvent e) {
+        int s = e.getScanCode();
+        for (int i = 0; i < TOP_ROW_SCANS.length; i++) {
+            if (TOP_ROW_SCANS[i] == s) {
+                if (TOP_ROW_ORIGINAL[i] == 0) {
+                    TOP_ROW_ORIGINAL[i] = kc(TOP_ROW_ORIGINAL_NAMES[i]);
+                }
+                return TOP_ROW_ORIGINAL[i];
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Re-inject the key with its original code, using the InputManagerService instance we are
+     * already hooked on. Mode 0 is INJECT_INPUT_EVENT_MODE_ASYNC.
+     */
+    private static void injectKey(Object ims, KeyEvent src, int keyCode) {
+        try {
+            KeyEvent out = new KeyEvent(src.getDownTime(), src.getEventTime(),
+                    src.getAction(), keyCode, src.getRepeatCount());
+            out.setSource(0x00000101); // InputDevice.SOURCE_KEYBOARD
+            Object r = XposedHelpers.callMethod(ims, "injectInputEvent", out, 0);
+            log("FN-RESTORE scan=" + src.getScanCode() + " action=" + src.getAction()
+                    + " -> injected code=" + keyCode + " ok=" + r);
+        } catch (Throwable t) {
+            log("FN-RESTORE inject FAILED: " + t);
         }
     }
 }
