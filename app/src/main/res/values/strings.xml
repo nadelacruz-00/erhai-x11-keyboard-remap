@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">KeyLog</string>
+    <string name="title">KeyLog — what apps actually receive</string>
+    <string name="hint">Keep this screen focused and press the key. If nothing appears, the key never reached the app layer. Newest event is at the top.</string>
+    <string name="idle">(press a key)</string>
+    <string name="clear">Clear</string>
+    <string name="copy">Copy</string>
+    <string name="legend">Pad 3 keyboard — expected raw values
+AI ⊞ key      scan 125   META_LEFT (117)
+Esc           scan 158   BACK (4)
+Search        scan 193   F23 (144)
+Top row       scan 224,225,183,186,99,194,165,164,163,113,114,115</string>
+</resources>
