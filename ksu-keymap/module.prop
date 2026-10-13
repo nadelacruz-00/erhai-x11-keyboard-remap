@@ -1,0 +1,6 @@
+id=pad3_keymap
+name=Pad3 Keymap (Layer A)
+version=1.0.0
+versionCode=100
+author=Minis
+description=Static keylayout for the OnePlus Pad 3 keyboard: physical Esc->ESCAPE, Search->FUNCTION, top row->F1..F12. Companion to the LSPosed Meta-routing module.
