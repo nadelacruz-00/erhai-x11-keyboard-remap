@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Spacing tokens. Everything on the screen uses these rather than ad-hoc dp values, so the
+  rhythm stays consistent. Scale is the usual 4 / 8 / 16 / 24 / 32 ladder.
+-->
+<resources>
+    <!-- Screen edge. Overridden to a much larger value on wide screens: see values-sw600dp. -->
+    <dimen name="screen_margin">16dp</dimen>
+
+    <dimen name="gap_xs">4dp</dimen>
+    <dimen name="gap_s">8dp</dimen>
+    <dimen name="gap_m">16dp</dimen>
+    <dimen name="gap_l">24dp</dimen>
+    <dimen name="gap_xl">32dp</dimen>
+
+    <!-- Inside a card: M3 cards use 8dp outer + 16dp inner for list-style content. -->
+    <dimen name="card_inset">8dp</dimen>
+    <dimen name="row_padding_h">16dp</dimen>
+    <dimen name="row_padding_v">12dp</dimen>
+    <!-- M3 minimum interactive target is 48dp; rows are deliberately taller for touch comfort. -->
+    <dimen name="row_min_height">64dp</dimen>
+
+    <dimen name="card_radius">16dp</dimen>
+</resources>

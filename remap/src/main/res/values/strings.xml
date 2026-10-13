@@ -22,7 +22,23 @@
 
     <string name="search_hint">Search apps…</string>
     <string name="restore_defaults">Restore defaults</string>
-    <string name="kill_switch">Kill switch (all off)</string>
+
+    <!--
+      Named for its consequence rather than "kill switch": the UX review flagged a vague
+      destructive button sitting next to ordinary controls as a hazard. It also now asks for
+      confirmation, and the safe choice is the default.
+    -->
+    <string name="kill_switch_short">Disable everything</string>
+    <string name="kill_switch_title">Disable all remapping?</string>
+    <string name="kill_switch_body">Turns off Super-key routing, Search blocking, Fn restore and normal mode. The keyboard goes back to its stock behaviour until you switch something on again. Your app list is kept.</string>
+    <string name="kill_switch_confirm">Disable</string>
+    <string name="cancel">Cancel</string>
+    <string name="kill_switch_done">All remapping is off</string>
+    <string name="defaults_done">Defaults restored</string>
+
+    <string name="no_apps_match">No apps match “%1$s”</string>
+    <string name="no_apps_installed">No launchable apps found</string>
+    <string name="clear_search">Clear search</string>
     <string name="perm_warning">Not granted WRITE_SECURE_SETTINGS — changes cannot be saved.\nRun once:  pm grant com.minis.kbremap android.permission.WRITE_SECURE_SETTINGS</string>
     <string name="no_apps">No apps match</string>
     <string name="apps_checked">%1$d of %2$d apps selected</string>
@@ -31,4 +47,5 @@
     <string name="summary_on">on</string>
     <string name="summary_off">off</string>
     <string name="summary_blocked">blocked</string>
+    <string name="read_only">read-only: permission missing</string>
 </resources>

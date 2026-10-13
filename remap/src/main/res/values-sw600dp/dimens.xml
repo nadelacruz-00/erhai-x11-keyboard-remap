@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Wide-screen spacing.
+
+  On a ~914dp tablet the default 16dp margin left switch labels and their controls stretched
+  hundreds of dp apart, and content ran edge to edge. Widening the margin is the simplest way to
+  pull the content into a comfortable reading column without hard-coding a max width.
+-->
+<resources>
+    <dimen name="screen_margin">48dp</dimen>
+</resources>
