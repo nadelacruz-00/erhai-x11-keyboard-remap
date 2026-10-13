@@ -107,6 +107,10 @@ public class MainHook implements IXposedHookLoadPackage {
     private static Field sOwnerUid;
     private static boolean sFocusErrorLogged;
 
+    /** Resolved WindowManagerInternal, and whether we have already explained how. */
+    private static volatile Object sWmCache;
+    private static volatile boolean sWmLogged;
+
     // ---------------------------------------------------------------- helpers
 
     private static void log(String s) {
@@ -508,13 +512,78 @@ public class MainHook implements IXposedHookLoadPackage {
         return AndroidAppHelper.currentApplication();
     }
 
-    /** InputManagerService -> mKeyGestureController -> mWindowManagerInternal */
+    /**
+     * Resolve WindowManagerInternal.
+     *
+     * The reference module reads InputManagerService.mKeyGestureController.mWindowManagerInternal,
+     * but Oplus ships its OWN InputManagerService (it is in /system/framework/oplus-services.jar)
+     * and that field is null on this build. LocalServices is the portable AOSP route and needs no
+     * private field names at all, so it is tried first.
+     */
     private static Object windowManagerOf(Object ims) {
+        Object cached = sWmCache;
+        if (cached != null) {
+            return cached;
+        }
+
+        // route 1: LocalServices.getService(WindowManagerInternal.class)
+        try {
+            Class<?> ls = Class.forName("com.android.server.LocalServices");
+            Method get = ls.getMethod("getService", Class.class);
+            Class<?> wmi = Class.forName("com.android.server.wm.WindowManagerInternal");
+            Object wm = get.invoke(null, wmi);
+            if (wm != null) {
+                if (!sWmLogged) {
+                    sWmLogged = true;
+                    log("windowManager resolved via LocalServices ("
+                            + wm.getClass().getName() + ")");
+                }
+                sWmCache = wm;
+                return wm;
+            }
+            if (!sWmLogged) {
+                sWmLogged = true;
+                log("LocalServices.getService(WindowManagerInternal) returned null");
+            }
+        } catch (Throwable t) {
+            if (!sWmLogged) {
+                sWmLogged = true;
+                log("LocalServices route FAILED: " + t);
+            }
+        }
+
+        // route 2: private fields, exactly as the reference module does
         try {
             Object kgc = XposedHelpers.getObjectField(ims, "mKeyGestureController");
-            return XposedHelpers.getObjectField(kgc, "mWindowManagerInternal");
+            Object wm = XposedHelpers.getObjectField(kgc, "mWindowManagerInternal");
+            if (wm != null) {
+                log("windowManager resolved via private fields");
+                sWmCache = wm;
+                return wm;
+            }
         } catch (Throwable t) {
-            return null;
+            log("field route FAILED: " + t);
+        }
+
+        dumpFields(ims, "InputManagerService");
+        return null;
+    }
+
+    /** One-off diagnostic: which fields does this build's InputManagerService actually have? */
+    private static void dumpFields(Object o, String label) {
+        try {
+            for (Field f : o.getClass().getDeclaredFields()) {
+                String n = f.getName().toLowerCase();
+                if (!n.contains("gesture") && !n.contains("window") && !n.contains("context")) {
+                    continue;
+                }
+                f.setAccessible(true);
+                Object v = f.get(o);
+                log("  " + label + "." + f.getName() + " : " + f.getType().getSimpleName()
+                        + " = " + (v == null ? "null" : v.getClass().getSimpleName()));
+            }
+        } catch (Throwable t) {
+            log("  field dump failed: " + t);
         }
     }
 }
