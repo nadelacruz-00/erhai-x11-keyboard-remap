@@ -11,14 +11,18 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="?android:attr/colorBackground"
+    android:fitsSystemWindows="true"
     android:orientation="vertical">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
-        style="@style/Widget.Material3Expressive.Toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="?android:attr/actionBarSize"
-        app:title="@string/app_name" />
+    <!--
+      No top app bar: the screen has one job, and the status card's heading already states what
+      state the remap is in, so a title bar showing the app name was just repeating information
+      the user already had when they opened it.
+
+      fitsSystemWindows replaces the one useful thing the toolbar was doing - keeping content out
+      from under the system bars. That matters here because targetSdk 35 is edge-to-edge by
+      default, so without it the card would draw underneath the status bar.
+    -->
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -44,7 +48,7 @@
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/gap_l"
+            android:layout_marginTop="@dimen/gap_xl"
             app:cardCornerRadius="@dimen/card_radius"
             app:cardElevation="0dp">
 
