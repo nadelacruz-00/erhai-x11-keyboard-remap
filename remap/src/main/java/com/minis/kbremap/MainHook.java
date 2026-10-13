@@ -305,8 +305,10 @@ public class MainHook implements IXposedHookLoadPackage {
 
         boolean permit;
         if (tracked) {
-            IBinder bound = sRouted.get(id);
-            permit = allow && bound != null && bound.equals(token);
+            // The DOWN was already routed. Permit the matching UP whenever the focused window is
+            // still allowed, WITHOUT requiring BinderProxy identity: consuming the UP while the
+            // DOWN was delivered would leave the app seeing a permanently-held Meta modifier.
+            permit = allow && sRouted.get(id) != null;
         } else {
             permit = allow && e.getAction() == KeyEvent.ACTION_DOWN;
         }
@@ -353,10 +355,22 @@ public class MainHook implements IXposedHookLoadPackage {
                 return false;
             }
             if (sGetInfo == null) {
-                sGetInfo = Class.forName("com.android.server.wm.WindowManagerInternal")
-                        .getMethod("getKeyInterceptionInfoFromToken", IBinder.class);
-                sOwnerUid = Class.forName("com.android.internal.policy.KeyInterceptionInfo")
-                        .getField("windowOwnerUid");
+                // MUST resolve through the HOST classloader. A bare Class.forName() uses the
+                // MODULE's classloader, which cannot see com.android.server.* - that mistake
+                // already cost one build cycle in windowManagerOf().
+                ClassLoader cl = wm.getClass().getClassLoader();
+                Class<?> wmi = XposedHelpers.findClassIfExists(
+                        "com.android.server.wm.WindowManagerInternal", cl);
+                Class<?> kii = XposedHelpers.findClassIfExists(
+                        "com.android.internal.policy.KeyInterceptionInfo", cl);
+                if (wmi == null || kii == null) {
+                    log("ALLOW: class lookup failed - WindowManagerInternal=" + wmi
+                            + " KeyInterceptionInfo=" + kii + " cl=" + cl);
+                    return false;
+                }
+                sGetInfo = wmi.getMethod("getKeyInterceptionInfoFromToken", IBinder.class);
+                sOwnerUid = kii.getField("windowOwnerUid");
+                log("ALLOW: reflection ready via " + wmi.getName());
             }
             Object info = sGetInfo.invoke(wm, token);
             if (info == null) {
