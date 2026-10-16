@@ -17,6 +17,7 @@ import os
 
 # Paths resolve relative to this file, so the tool runs from anywhere.
 _REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+import difflib
 import re
 import shutil
 import subprocess
@@ -53,10 +54,26 @@ EDITS = {
     115: ("VOLUME_UP", "F12"),
 }
 
+# HID usage -> (expected current keycode name, new keycode name).
+#
+# Scan codes are NOT the whole story on this keyboard. Both 22d9:3869 devices report HID usages
+# (`EV_MSC MSC_SCAN` on every press) and Android resolves a key that carries a usage through the
+# USAGE map BEFORE the scan-code map (`KeyLayoutMap::getKey()` checks usageCode first), so a
+# `key <scan> X` line is dead weight for any key that also has a `key usage <usage> Y` line.
+#
+# The stock file carries usage lines for the brightness pair only. Remapping the scan codes to
+# F1/F2 while leaving those alone left exactly those two keys still changing the brightness -
+# measured on the device - which is what this table fixes. The FALLBACK_USAGE_MAPPING flag is
+# dropped: a fallback-flagged entry is the low-priority one, and we want these to win outright.
+USAGE_EDITS = {
+    0x0C006F: ("BRIGHTNESS_UP", "F2"),
+    0x0C0070: ("BRIGHTNESS_DOWN", "F1"),
+}
+
 MODULE_PROP = """id=pad3_keymap
 name=Erhai X-11 Keyboard Remap - keymap
-version=1.1.0
-versionCode=110
+version=1.2.0
+versionCode=120
 author=Erhai X-11
 description=Static keylayout for the OnePlus Pad 3 keyboard: physical Esc->ESCAPE, Search->FUNCTION, top row->F1..F12. Companion to the LSPosed half of Erhai X-11 Keyboard Remap. Disabling this module reverts the keyboard to stock.
 """
@@ -86,6 +103,22 @@ only honours from real hardware events, so they are not recoverable via injectio
 
 `Del` (scan 111) is deliberately left alone.
 
+## HID usages
+
+Android resolves a key that carries a HID usage through the usage map *before* the scan-code map
+(`KeyLayoutMap::getKey()` checks `usageCode` first), and this keyboard reports usages from both of
+its 22d9:3869 devices (`EV_MSC MSC_SCAN` on every press). So the brightness pair also has to be
+remapped where the stock file declares it by usage:
+
+| usage | was | now |
+|---|---|---|
+| `0x0c006F` | `BRIGHTNESS_UP` | `F2` |
+| `0x0c0070` | `BRIGHTNESS_DOWN` | `F1` |
+
+The `FALLBACK_USAGE_MAPPING` flag is dropped, which makes them *primary* usage mappings - a
+fallback-flagged entry is the low-priority one. Without this, `key 224 F1` / `key 225 F2` are
+never consulted and the first two top-row keys keep changing the brightness (measured on device).
+
 ## Why this layer exists
 
 A Java/LSPosed hook cannot change a keycode - the native InputDispatcher dispatches its own
@@ -97,9 +130,12 @@ patches `key 158 BACK` for Escape while doing Meta routing in code.
 
 - The file is a FULL replacement of Generic.kl, not a patch. One .kl serves all four
   sub-devices that share VID:PID 22d9:3869, so a slim file would break the touchpad.
-- No `.kcm` is shipped in v1.0.0 on purpose: your device's Generic.kcm has zero `fn:`
-  entries, so the Fn-fallback mechanism is unproven here. Restoring brightness/volume on
-  Fn-held is planned as Layer A2 once A1 is verified.
+- No `.kcm` is shipped on purpose: your device's Generic.kcm has zero `fn:` entries, so the
+  Fn-fallback mechanism is unproven here.
+- Restoring a top-row key's original action while Fn is held is done by the LSPosed half, not
+  here, and that half has to track the Fn key itself: Android keeps modifier state **per input
+  device**, Fn lives on the keyboard device while the brightness and volume keys are reported by
+  the consumer-control device, so `isFunctionPressed()` is never true on those events.
 - Rollback: disable or delete the module in KernelSU and reboot. No partition is written.
 """
 
@@ -108,14 +144,22 @@ def main():
     src = open(SRC, "r", errors="replace").read()
     lines = src.split("\n")
 
-    # Build a scancode -> line index map, asserting single occurrence.
+    # Build scancode and HID usage -> line index maps, asserting single occurrence.
     index = {}
+    uindex = {}
     for i, line in enumerate(lines):
         s = line.split("#", 1)[0].strip()
         if not s.startswith("key "):
             continue
         parts = s.split()
         if len(parts) < 3:
+            continue
+        if parts[1] == "usage":
+            try:
+                usage = int(parts[2], 0)
+            except ValueError:
+                continue
+            uindex.setdefault(usage, []).append(i)
             continue
         try:
             code = int(parts[1], 0)
@@ -133,6 +177,18 @@ def main():
         if not re.match(r"^\s*key\s+%d\s+%s\s*$" % (code, re.escape(was)), line):
             problems.append(f"scan {code}: baseline is {line.strip()!r}, expected key {code} {was}")
 
+    for usage, (was, now) in USAGE_EDITS.items():
+        idxs = uindex.get(usage, [])
+        if len(idxs) != 1:
+            problems.append(f"usage 0x{usage:06X}: expected exactly 1 baseline line, "
+                            f"found {len(idxs)}")
+            continue
+        line = lines[idxs[0]]
+        if not re.match(r"^\s*key\s+usage\s+0x0*%X\s+%s\b" % (usage, re.escape(was)),
+                        line, re.IGNORECASE):
+            problems.append(f"usage 0x{usage:06X}: baseline is {line.strip()!r}, "
+                            f"expected key usage 0x{usage:06X} {was}")
+
     if problems:
         print("BASELINE MISMATCH - refusing to write:")
         for p in problems:
@@ -142,6 +198,11 @@ def main():
     for code, (was, now) in EDITS.items():
         lines[index[code][0]] = "key %-5d %s" % (code, now)
 
+    for usage, (was, now) in USAGE_EDITS.items():
+        # Match the baseline's own style: lowercase usage page, uppercase 16-bit usage id.
+        lines[uindex[usage][0]] = "key usage 0x%02x%04X %s" % (
+            usage >> 16, usage & 0xFFFF, now)
+
     out = "\n".join(lines)
 
     # sanity: same number of lines, and every scancode still present exactly once
@@ -149,6 +210,9 @@ def main():
     for code in EDITS:
         hits = len(re.findall(r"(?m)^key\s+%d\s+" % code, out))
         assert hits == 1, f"scan {code} appears {hits} times after edit"
+    for usage in USAGE_EDITS:
+        hits = len(re.findall(r"(?mi)^key\s+usage\s+0x0*%X\s+" % usage, out))
+        assert hits == 1, f"usage 0x{usage:06X} appears {hits} times after edit"
 
     os.makedirs(os.path.dirname(OUT_KL), exist_ok=True)
     with open(OUT_KL, "w") as fh:
@@ -161,9 +225,10 @@ def main():
     print(f"wrote {OUT_KL} ({len(out)} bytes, {out.count(chr(10))} lines)")
     print(f"  baseline {SRC}: {len(src)} bytes")
 
-    # show exactly what changed
-    diff = subprocess.run(["diff", SRC, OUT_KL], capture_output=True, text=True).stdout
-    changed = [l for l in diff.split("\n") if l.startswith(("<", ">"))]
+    # show exactly what changed (difflib, not the diff binary: this runs on Android too, where
+    # an external diff may not exist and the report silently came out as "0 changed lines")
+    changed = [l for l in difflib.unified_diff(src.split("\n"), out.split("\n"), lineterm="")
+               if l[:1] in "-+" and not l.startswith(("---", "+++"))]
     print(f"  changed lines: {len(changed)}")
     for l in changed:
         print("    " + l)

@@ -23,6 +23,22 @@ only honours from real hardware events, so they are not recoverable via injectio
 
 `Del` (scan 111) is deliberately left alone.
 
+## HID usages
+
+Android resolves a key that carries a HID usage through the usage map *before* the scan-code map
+(`KeyLayoutMap::getKey()` checks `usageCode` first), and this keyboard reports usages from both of
+its 22d9:3869 devices (`EV_MSC MSC_SCAN` on every press). So the brightness pair also has to be
+remapped where the stock file declares it by usage:
+
+| usage | was | now |
+|---|---|---|
+| `0x0c006F` | `BRIGHTNESS_UP` | `F2` |
+| `0x0c0070` | `BRIGHTNESS_DOWN` | `F1` |
+
+The `FALLBACK_USAGE_MAPPING` flag is dropped, which makes them *primary* usage mappings - a
+fallback-flagged entry is the low-priority one. Without this, `key 224 F1` / `key 225 F2` are
+never consulted and the first two top-row keys keep changing the brightness (measured on device).
+
 ## Why this layer exists
 
 A Java/LSPosed hook cannot change a keycode - the native InputDispatcher dispatches its own
@@ -34,7 +50,10 @@ patches `key 158 BACK` for Escape while doing Meta routing in code.
 
 - The file is a FULL replacement of Generic.kl, not a patch. One .kl serves all four
   sub-devices that share VID:PID 22d9:3869, so a slim file would break the touchpad.
-- No `.kcm` is shipped in v1.0.0 on purpose: your device's Generic.kcm has zero `fn:`
-  entries, so the Fn-fallback mechanism is unproven here. Restoring brightness/volume on
-  Fn-held is planned as Layer A2 once A1 is verified.
+- No `.kcm` is shipped on purpose: your device's Generic.kcm has zero `fn:` entries, so the
+  Fn-fallback mechanism is unproven here.
+- Restoring a top-row key's original action while Fn is held is done by the LSPosed half, not
+  here, and that half has to track the Fn key itself: Android keeps modifier state **per input
+  device**, Fn lives on the keyboard device while the brightness and volume keys are reported by
+  the consumer-control device, so `isFunctionPressed()` is never true on those events.
 - Rollback: disable or delete the module in KernelSU and reboot. No partition is written.

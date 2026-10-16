@@ -94,6 +94,19 @@ public class MainHook implements IXposedHookLoadPackage {
     /** -1 unknown, 0 off, 1 on. Resolved on first use; the switch is defined as boot-applied. */
     private static volatile int sEnabled = -1;
 
+    /**
+     * Fn/Search state, tracked by us instead of read from the event.
+     *
+     * Android keeps modifier (meta) state PER INPUT DEVICE - each KeyboardInputMapper owns its own
+     * mMetaState - and a Bluetooth-connected keyboard exposes the Search key on one input device
+     * while the brightness and volume keys arrive from its separate "Consumer Control" collection
+     * as a second device. So an event from that second device never carries AMETA_FUNCTION_ON, and
+     * isFunctionPressed() is false on it no matter how firmly Fn is held on the first. That is why
+     * Fn+the brightness pair did nothing over Bluetooth while Fn+a same-device key (the trackpad /
+     * F16 key, SYSRQ) did restore.
+     */
+    private static volatile boolean sFnDown = false;
+
     private static boolean enabled() {
         int cached = sEnabled;
         if (cached >= 0) {
@@ -164,22 +177,28 @@ public class MainHook implements IXposedHookLoadPackage {
                             }
                             int policyFlags = (Integer) p.args[1];
 
-                            // Fn (the Search key, mapped to FUNCTION by the keylayout) restores the
-                            // original action of a top-row key by re-injecting its original code.
-                            if (isTopRow(e) && e.isFunctionPressed()) {
+                            // The Search key is the Fn modifier, and is blocked everywhere.
+                            // Handle it FIRST so we can record its state: the Fn flag is what lets
+                            // the top-row branch below work for keys on the OTHER input device.
+                            if (isSearch(e)) {
+                                sFnDown = e.getAction() == KeyEvent.ACTION_DOWN;
+                                log("QUEUE drop SEARCH scan=" + e.getScanCode()
+                                        + " fnDown=" + sFnDown);
+                                p.setResult(0);
+                                return;
+                            }
+
+                            // Fn held restores the original action of a top-row key by re-injecting
+                            // its original code. Two signals are accepted: the platform's own meta
+                            // state (only ever set for keys on the same device as Fn) and our own
+                            // cross-device flag.
+                            if (isTopRow(e) && (e.isFunctionPressed() || sFnDown)) {
                                 int orig = originalFor(e);
                                 if (orig != -1) {
                                     injectKey(p.thisObject, e, orig);
                                     p.setResult(0); // never deliver the F-key itself
                                     return;
                                 }
-                            }
-
-                            // The Search key is the Fn modifier, and is blocked everywhere.
-                            if (isSearch(e)) {
-                                log("QUEUE drop SEARCH scan=" + e.getScanCode());
-                                p.setResult(0);
-                                return;
                             }
 
                             if (isMetaRelated(e)) {

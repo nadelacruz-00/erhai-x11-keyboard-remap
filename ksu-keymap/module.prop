@@ -1,6 +1,6 @@
 id=pad3_keymap
 name=Erhai X-11 Keyboard Remap - keymap
-version=1.1.0
-versionCode=110
+version=1.2.0
+versionCode=120
 author=Erhai X-11
 description=Static keylayout for the OnePlus Pad 3 keyboard: physical Esc->ESCAPE, Search->FUNCTION, top row->F1..F12. Companion to the LSPosed half of Erhai X-11 Keyboard Remap. Disabling this module reverts the keyboard to stock.
